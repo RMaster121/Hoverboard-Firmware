@@ -22,12 +22,15 @@
 #define TODO_PIN PF4	// PF4 is only accessible on the largest GD32F130Rx LQFP64 pinouts mcu
 
 // LED defines
+// SLAVE
 #define LED_GREEN PA15
-#define LED_ORANGE PA12
 #define LED_RED PB3
-
+#ifdef SLAVE
+	#define LED_ORANGE PA12
+#endif
 #define UPPER_LED	PA1
 #define LOWER_LED	PA0
+
 
 
 // Mosfet output, little onboard led
@@ -56,6 +59,7 @@
 #define USART0_RX	PB7
 
 // GD32F130 USART1 GD32F130 TX/RX: (PA14/PA15)AF1 , (PA2,PA3)AF1	, (PA8/PB0)AlternateFunction4
+// used between boards
 #define USART1_TX		PA2
 #define USART1_RX		PA3
 
@@ -79,3 +83,6 @@
 
 // Debug pin defines -  no longer has any function in code !
 #define DEBUG_PIN PB4
+
+#define BMI_160
+#define I2C_PB8PB9

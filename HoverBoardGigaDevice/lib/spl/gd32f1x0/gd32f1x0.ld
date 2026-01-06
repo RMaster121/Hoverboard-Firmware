@@ -14,6 +14,14 @@ _Min_Stack_Size = 0x400;                /* 1024 bytes stack */
 
 SECTIONS
 {
+    /* --- POCZĄTEK WSTAWKI --- */
+    /* Parkujemy RTT pod adresem 0x20000000 */
+    .rtt_fixed 0x20000000 :
+    {
+        KEEP(*(.rtt_fixed))
+    } > RAM
+    /* --- KONIEC WSTAWKI --- */
+
     /* Vector table MUST be at 0x08000000 */
     .isr_vector :
     {

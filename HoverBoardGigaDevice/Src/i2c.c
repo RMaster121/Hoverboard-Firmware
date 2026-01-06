@@ -26,49 +26,42 @@
 
 #ifdef I2C_ENABLE
 
-//#define I2C_OLD
-#ifdef I2C_OLD
-void I2C_Init() {
-    /* I2C clock configure */
-     i2c_clock_config(I2C_PERIPH, I2C_SPEED, I2C_DTCY_16_9);            // I2C duty cycle in fast mode plus
-    /* I2C address configure */
-    i2c_mode_addr_config(I2C_PERIPH, I2C_I2CMODE_ENABLE, I2C_ADDFORMAT_7BITS, I2C_OWN_ADDRESS7);
-    /* enable I2C */
-    i2c_enable(I2C_PERIPH);
-    /* enable acknowledge */
-    i2c_ack_config(I2C_PERIPH, I2C_ACK_ENABLE);
-}
-#else
 void I2C_Init()
 {
     rcu_periph_clock_enable(RCU_GPIOB);
     rcu_periph_clock_enable(MPU_RCU_I2C);
 
-	#ifdef I2C_PB6PB7	
-		// Configure PB6 (SCL) and PB7 (SDA) as AF open-drain
-		gpio_mode_set(GPIOB, GPIO_MODE_AF, GPIO_PUPD_PULLUP, GPIO_PIN_6 | GPIO_PIN_7);
-		gpio_output_options_set(GPIOB, GPIO_OTYPE_OD, GPIO_OSPEED_50MHZ, GPIO_PIN_6 | GPIO_PIN_7);
-		gpio_af_set(GPIOB, GPIO_AF_1, GPIO_PIN_6 | GPIO_PIN_7);  // AF1 for I2C0
-	#else
-		// Configure PB8 (SCL) and PB9 (SDA) as AF open-drain
-	  #if TARGET == 2 // GD32/STM32F103
-		rcu_periph_clock_enable(RCU_AF);        // Alternate Function clock
-		gpio_pin_remap_config(GPIO_I2C0_REMAP, ENABLE); // JW: Remap I2C0 to PB8 and PB9
-		gpio_init(GPIOB, GPIO_MODE_AF_OD, GPIO_OSPEED_50MHZ, GPIO_PIN_8 | GPIO_PIN_9);
-	  #else
-		gpio_mode_set(GPIOB, GPIO_MODE_AF, GPIO_PUPD_PULLUP, GPIO_PIN_8 | GPIO_PIN_9);
-		gpio_output_options_set(GPIOB, GPIO_OTYPE_OD, GPIO_OSPEED_50MHZ, GPIO_PIN_8 | GPIO_PIN_9);
-		gpio_af_set(GPIOB, GPIO_AF_1, GPIO_PIN_8 | GPIO_PIN_9);  // AF1 for I2C0
-	  #endif
-	#endif	
-	
+    gpio_mode_set(GPIOB, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO_PIN_8 | GPIO_PIN_9);
+    gpio_output_options_set(GPIOB, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_8 | GPIO_PIN_9);
+
+    // Ustawiamy SDA (PB9) wysoko
+    gpio_bit_set(GPIOB, GPIO_PIN_9);
+
+    // Generujemy 9 cykli zegara na SCL (PB8), żeby zmusić czujnik do puszczenia linii
+    for(int i = 0; i < 9; i++) {
+        gpio_bit_reset(GPIOB, GPIO_PIN_8); // SCL Low
+        Delay(DELAY_IN_MAIN_LOOP);                       // Krótkie opóźnienie (zaimplementuj prostą pętlę for)
+        gpio_bit_set(GPIOB, GPIO_PIN_8);   // SCL High
+        Delay(DELAY_IN_MAIN_LOOP);
+    }
+
+    // Generujemy warunek STOP (SCL High, zmiana SDA Low -> High)
+    gpio_bit_reset(GPIOB, GPIO_PIN_9); // SDA Low
+    Delay(DELAY_IN_MAIN_LOOP);
+    gpio_bit_set(GPIOB, GPIO_PIN_8);   // SCL High
+    Delay(DELAY_IN_MAIN_LOOP);
+    gpio_bit_set(GPIOB, GPIO_PIN_9);   // SDA High (STOP)
+
+    gpio_mode_set(GPIOB, GPIO_MODE_AF, GPIO_PUPD_PULLUP, GPIO_PIN_8 | GPIO_PIN_9);
+    gpio_output_options_set(GPIOB, GPIO_OTYPE_OD, GPIO_OSPEED_50MHZ, GPIO_PIN_8 | GPIO_PIN_9);
+    gpio_af_set(GPIOB, GPIO_AF_1, GPIO_PIN_8 | GPIO_PIN_9);  // AF1 for I2C0
+
 	i2c_deinit(I2C_PERIPH);
 	i2c_clock_config(I2C_PERIPH, I2C_SPEED, I2C_DTCY_16_9);            // I2C duty cycle in fast mode plus
 	i2c_mode_addr_config(I2C_PERIPH, I2C_I2CMODE_ENABLE, I2C_ADDFORMAT_7BITS, I2C_OWN_ADDRESS7);
 	i2c_enable(I2C_PERIPH);
 	i2c_ack_config(I2C_PERIPH, I2C_ACK_ENABLE);
 }
-#endif
 
 //------------------------------------------------------------------------------
 // Blocking write of N bytes to device @devAddr, register @regAddr.

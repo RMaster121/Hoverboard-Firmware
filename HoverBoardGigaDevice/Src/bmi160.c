@@ -48,7 +48,9 @@
 #define BMI160_GYR_NORMAL_CMD   0x15
 
 // BMI160 Expected Chip ID
-#define BMI160_CHIP_ID          0xD1
+#define BMI160_CHIP_ID              0xD1
+#define BMI160_CHIP_ID_ALTERNATIVE  0xD3
+
 
 extern uint32_t iBug;
 
@@ -98,7 +100,7 @@ int mpu_config(void) {
 
     // 1) Check Chip ID
     rc = i2c_readBytes(MPU_I2C, BMI160_I2C_ADDR, BMI160_CHIP_ID_ADDR, 1, &chip_id);
-    if (rc || chip_id != BMI160_CHIP_ID) {
+    if (rc || (chip_id != BMI160_CHIP_ID && chip_id != BMI160_CHIP_ID_ALTERNATIVE)) {
         return -1; // Error: incorrect chip ID or I2C failure
     }
     Delay(10);
@@ -119,18 +121,18 @@ int mpu_config(void) {
 
     // 4) Configure accelerometer
     // ODR = 200Hz (0b1000), Bandwidth = Normal (0b010 << 4) -> 0x28
-    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_ACC_CONF_ADDR, 0x28);
+    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_ACC_CONF_ADDR, 0x2A);
     if (rc) return rc;
     // Range = +/- 2g (0b0011)
-    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_ACC_RANGE_ADDR, 0x03);
+    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_ACC_RANGE_ADDR, 0x05);
     if (rc) return rc;
 
     // 5) Configure gyroscope
     // ODR = 200Hz (0b1000), Bandwidth = Normal (0b010 << 4) -> 0x28
-    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_GYR_CONF_ADDR, 0x28);
+    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_GYR_CONF_ADDR, 0x2A);
     if (rc) return rc;
     // Range = +/- 250 dps (0b0100), the closest to MPU6050's 250dps
-    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_GYR_RANGE_ADDR, 0x04);
+    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_GYR_RANGE_ADDR, 0x03);
     if (rc) return rc;
 
     return 0; // Success
@@ -168,7 +170,7 @@ int MPU_ReadAll() {
 
         // Unpack temperature data (little-endian)
         mpuData.temperature = (int16_t)((temp_buf[1] << 8) | temp_buf[0]);
-        // Note: To convert BMI160 temperature to °C: T_celsius = 23 + (raw_temp / 512.0)
+        // Note: To convert BMI160 temperature to ï¿½C: T_celsius = 23 + (raw_temp / 512.0)
         // Here we just store the raw value as the struct expects.
 
         // Apply low-pass filter
