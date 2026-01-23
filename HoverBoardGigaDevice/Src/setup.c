@@ -60,9 +60,6 @@ timer_oc_parameter_struct timerBldc_oc_parameter_struct;
 // DMA (USART) structs
 dma_parameter_struct dma_init_struct_usart;
 
-//uint8_t usartMasterSlave_rx_buf[USART_MASTERSLAVE_RX_BUFFERSIZE];
-//uint8_t usartSteer_COM_rx_buf[USART_STEER_COM_RX_BUFFERSIZE];
-
 uint8_t usart0_rx_buf[1];
 uint8_t usart1_rx_buf[1];
 uint8_t usart2_rx_buf[1];
@@ -259,123 +256,6 @@ void GPIO_init(void)
 
 }
 
-
-//volatile uint8_t hall = 0;        // Global hall state
-//volatile uint32_t last_edge = 0;  // Timestamp of last edge (e.g., SysTick count)
-
-
-
-
-
-/*
-//----------------------------------------------------------------------------
-// Initializes the PWM
-//----------------------------------------------------------------------------
-void PWM_initOld(void)
-{
-	// Enable timer clock
-	rcu_periph_clock_enable(RCU_TIMER_BLDC);
-	
-	// Initial deinitialize of the timer
-	timer_deinit(TIMER_BLDC);
-	
-	// Set up the basic parameter struct for the timer
-	timerBldc_paramter_struct.counterdirection = TIMER_COUNTER_UP;
-	timerBldc_paramter_struct.prescaler = 0;
-	timerBldc_paramter_struct.alignedmode = TIMER_COUNTER_CENTER_BOTH;	//changed from TIMER_COUNTER_CENTER_DOWN by deepseek for SVM;
-	timerBldc_paramter_struct.period = BLDC_TIMER_PERIOD;
-	timerBldc_paramter_struct.clockdivision = TIMER_CKDIV_DIV1;
-
-	
-	timerBldc_paramter_struct.repetitioncounter = 0;
-	timer_auto_reload_shadow_disable(TIMER_BLDC);
-	
-	// Initialize timer with basic parameter struct
-	timer_init(TIMER_BLDC, &timerBldc_paramter_struct);
-
-	// Deactivate output channel fastmode
-	timer_channel_output_fast_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, TIMER_OC_FAST_DISABLE);
-	timer_channel_output_fast_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, TIMER_OC_FAST_DISABLE);
-	timer_channel_output_fast_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, TIMER_OC_FAST_DISABLE);
-	
-	// Deactivate output channel shadow function
-	timer_channel_output_shadow_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, TIMER_OC_SHADOW_DISABLE);
-	timer_channel_output_shadow_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, TIMER_OC_SHADOW_DISABLE);
-	timer_channel_output_shadow_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, TIMER_OC_SHADOW_DISABLE);
-	
-	// Set output channel PWM type to PWM1
-
-	// CH0COMCTL[2:0]
-	// 110: PWM mode0.
-	// When counting up, OxCPRE is high when the counter is smaller than TIMER0_CHxCV, and low otherwise.
-	// When counting down, OxCPRE is low when the counter is larger than TIMER0_CHxCV, and high otherwise.
-	// 111: PWM mode1.
-	// When counting up, OxCPRE is low when the counter is smaller than TIMER0_CHxCV, and high otherwise.
-	// When counting down, OxCPRE is high when the counter is larger than TIMER0_CHxCV, and low otherwise.
-	timer_channel_output_mode_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, TIMER_OC_MODE_PWM1);
-	timer_channel_output_mode_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, TIMER_OC_MODE_PWM1);
-	timer_channel_output_mode_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, TIMER_OC_MODE_PWM1);
-
-	// Initialize pulse length with value 0 (pulse duty factor = zero)
-	timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, 0);
-	timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, 0);
-	timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, 0);
-	
-	// Set up the output channel parameter struct
-	timerBldc_oc_parameter_struct.ocpolarity 		= TIMER_OC_POLARITY_HIGH; //HIGH: CHx_O is the same as OxCPRE , LOW: CHx_O is contrary to OxCPRE
-	timerBldc_oc_parameter_struct.ocnpolarity 	= TIMER_OCN_POLARITY_LOW; //HIGH: CHx_ON is contrary to OxCPRE, LOW: CHx_O is the same as OxCPRE
-	timerBldc_oc_parameter_struct.ocidlestate 	= TIMER_OC_IDLE_STATE_LOW;
-	timerBldc_oc_parameter_struct.ocnidlestate 	= TIMER_OCN_IDLE_STATE_HIGH;
-	
-	// Configure all three output channels with the output channel parameter struct
-	timer_channel_output_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, &timerBldc_oc_parameter_struct);
-  timer_channel_output_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, &timerBldc_oc_parameter_struct);
-	timer_channel_output_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, &timerBldc_oc_parameter_struct);
-
-	// Set up the break parameter struct
-	timerBldc_break_parameter_struct.runoffstate			= TIMER_ROS_STATE_ENABLE;
-	timerBldc_break_parameter_struct.ideloffstate 		= TIMER_IOS_STATE_DISABLE;
-	timerBldc_break_parameter_struct.protectmode			= TIMER_CCHP_PROT_OFF;
-	timerBldc_break_parameter_struct.outputautostate 	= TIMER_OUTAUTO_ENABLE;
-	timerBldc_break_parameter_struct.breakpolarity		= TIMER_BREAK_POLARITY_LOW;
-
-	//timerBldc_break_parameter_struct.deadtime 				= DEAD_TIME;
-	//timerBldc_break_parameter_struct.breakstate				= TIMER_BREAK_DISABLE;		// Gen2.2 HarleyBob used TIMER_BREAK_DISABLE instead of TIMER_BREAK_ENABLE
-	//deepseek: Add dead time configuration (critical for SVM):
-	#ifdef BLDC_SINEx
-		timerBldc_break_parameter_struct.deadtime = 0;  // No dead time needed for SVM   ; robo: really ?? deadtime is to prevent short cut through highside mosfet and lowside mosfet being on at the same time
-	#else
-		timerBldc_break_parameter_struct.deadtime 				= DEAD_TIME;
-	#endif
-	timerBldc_break_parameter_struct.breakstate = TIMER_BREAK_DISABLE;
-
-	
-	
-	// Configure the timer with the break parameter struct
-	timer_break_config(TIMER_BLDC, &timerBldc_break_parameter_struct);
-
-	// Disable until all channels are set for PWM output
-	timer_disable(TIMER_BLDC);
-
-	// Enable all three channels for PWM output
-	timer_channel_output_state_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, TIMER_CCX_ENABLE);
-	timer_channel_output_state_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, TIMER_CCX_ENABLE);
-	timer_channel_output_state_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, TIMER_CCX_ENABLE);
-
-	// Enable all three complemenary channels for PWM output
-	timer_channel_complementary_output_state_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, TIMER_CCXN_ENABLE);
-	timer_channel_complementary_output_state_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, TIMER_CCXN_ENABLE);
-	timer_channel_complementary_output_state_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, TIMER_CCXN_ENABLE);
-	
-	// Enable TIMER_INT_UP interrupt and set priority
-	TARGET_nvic_irq_enable(TIMER0_BRK_UP_TRG_COM_IRQn, 0, 0);		// can interrupt everything, but wait for hall-irq to finish
-	timer_interrupt_enable(TIMER_BLDC, TIMER_INT_UP);
-	
-	// Enable the timer and start PWM
-	timer_enable(TIMER_BLDC);
-}
-*/
-
 void PWM_init(void)
 {
 	// Enable timer clock
@@ -469,101 +349,6 @@ void PWM_init(void)
 	// Enable the timer and start PWM
 	timer_enable(TIMER_BLDC);
 }
-
-/*
-//----------------------------------------------------------------------------
-// Initializes the ADC
-//----------------------------------------------------------------------------
-void ADC_initOld(void)
-{
-	// Enable ADC and DMA clock
-	rcu_periph_clock_enable(RCU_ADC);
-	rcu_periph_clock_enable(RCU_DMA);
-	
-  // Configure ADC clock (APB2 clock is DIV1 -> 72MHz, ADC clock is DIV6 -> 12MHz)
-	rcu_adc_clock_config(RCU_ADCCK_APB2_DIV6);
-	
-	// Interrupt channel 0 enable
-	TARGET_nvic_irq_enable(DMA_Channel0_IRQn, 1, 0);
-	
-	// Initialize DMA channel 0 for ADC
-	TARGET_dma_deinit(DMA_CH0);
-	
-	uint16_t iCountAdc = sizeof(adc_buffer)/2;	// array of uint16_t
-	//iCountAdc = 1;
-	
-	dma_init_struct_adc.direction = DMA_PERIPHERAL_TO_MEMORY;
-	dma_init_struct_adc.memory_addr = (uint32_t)&adc_buffer;
-	dma_init_struct_adc.memory_inc = DMA_MEMORY_INCREASE_ENABLE;
-	dma_init_struct_adc.memory_width = DMA_MEMORY_WIDTH_16BIT;
-	dma_init_struct_adc.number = iCountAdc;
-	
-	dma_init_struct_adc.periph_addr = (uint32_t)&TARGET_ADC_RDATA;
-	dma_init_struct_adc.periph_inc = DMA_PERIPH_INCREASE_DISABLE;
-	dma_init_struct_adc.periph_width = DMA_PERIPHERAL_WIDTH_16BIT;
-	dma_init_struct_adc.priority = DMA_PRIORITY_ULTRA_HIGH;
-	TARGET_dma_init(DMA_CH0, &dma_init_struct_adc);
-	
-	// Configure DMA mode
-	TARGET_dma_circulation_enable(DMA_CH0);
-	TARGET_dma_memory_to_memory_disable(DMA_CH0);
-	
-	// Enable DMA transfer complete interrupt
-	TARGET_dma_interrupt_enable(DMA_CH0, DMA_CHXCTL_FTFIE);
-	
-	// At least clear number of remaining data to be transferred by the DMA 
-	TARGET_dma_transfer_number_config(DMA_CH0, iCountAdc);		// 2
-	
-	// Enable DMA channel 0
-	TARGET_dma_channel_enable(DMA_CH0);
-	
-	
-	#ifdef REMOTE_AUTODETECT
-		adc_channel_length_config(ADC_REGULAR_CHANNEL, 1);
-		adc_regular_channel_config(0, PIN_TO_CHANNEL(TODO_PIN), ADC_SAMPLETIME_13POINT5);
-			// for some reason, the adc channel 1 used for VBat (3.3V) has to be set to TODO_PIN = PF4
-	#else
-		TARGET_adc_channel_length_config(ADC_REGULAR_CHANNEL, iCountAdc);	// 2
-		#ifdef VBATT
-			TARGET_adc_regular_channel_config(0, PIN_TO_CHANNEL(VBATT), ADC_SAMPLETIME_13POINT5);
-		#endif
-		#ifdef CURRENT_DC
-			TARGET_adc_regular_channel_config(1, PIN_TO_CHANNEL(CURRENT_DC), ADC_SAMPLETIME_13POINT5);
-		#endif
-		#ifdef REMOTE_ADC
-			adc_regular_channel_config(2, PIN_TO_CHANNEL(PA2), ADC_SAMPLETIME_13POINT5);
-			adc_regular_channel_config(3, PIN_TO_CHANNEL(PA3), ADC_SAMPLETIME_13POINT5);
-		#endif
-	#endif
-	
-	TARGET_adc_data_alignment_config(ADC_DATAALIGN_RIGHT);
-	
-	// Set trigger of ADC
-	TARGET_adc_external_trigger_config(ADC_REGULAR_CHANNEL, ENABLE);
-	TARGET_adc_external_trigger_source_config(ADC_REGULAR_CHANNEL, ADC_EXTTRIG_REGULAR_NONE);
-
-	// Disable the temperature sensor, Vrefint and vbat channel
-	adc_tempsensor_vrefint_disable();
-	#ifndef REMOTE_AUTODETECT
-		TARGET_adc_vbat_disable();
-	#endif
-	
-	// ADC analog watchdog disable
-	TARGET_adc_watchdog_disable();
-	
-	// Enable ADC (must be before calibration)
-	TARGET_adc_enable();
-	
-	// Calibrate ADC values
-	TARGET_adc_calibration_enable();
-	
-	// Enable DMA request
-	TARGET_adc_dma_mode_enable();
-    
-	// Set ADC to scan mode
-	TARGET_adc_special_function_config(ADC_SCAN_MODE, ENABLE);
-}
-*/
 
 void ADC_init(void)
 {
@@ -841,84 +626,6 @@ void USART1_Init(uint32_t iBaud)
 #endif
 }
 
-void USART2_Init(uint32_t iBaud)	// only for target==2 = gd32f103
-{
-#if defined(HAS_USART2) && TARGET==2
-
-	//JMA enable RCU_AF for alternate functions
-	rcu_periph_clock_enable(RCU_AF);
-
-	#if REMOTE_USART==2 && defined(REMOTE_UARTBUS)	// no pullup resistors with multiple boards on the UartBus - Esp32/Arduino (Serial.begin) have to setup pullups
-		#define USART2_PUPD	GPIO_MODE_AF_OD
-	#else
-		#define USART2_PUPD	GPIO_MODE_AF_PP
-	#endif
-	// JW: Configure USART2 TX (PB10) and RX (PB11) pins
-	//gpio_init(USART_MASTERSLAVE_TX_PORT, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, USART_MASTERSLAVE_TX_PIN); // JW:
-	//gpio_init(USART_MASTERSLAVE_RX_PORT, GPIO_MODE_IN_FLOATING, GPIO_OSPEED_50MHZ, USART_MASTERSLAVE_RX_PIN); // JW:
-	pinModeSpeed(USART2_TX, USART2_PUPD, GPIO_OSPEED_50MHZ);
-	pinModeSpeed(USART2_RX, GPIO_MODE_IN_FLOATING, GPIO_OSPEED_50MHZ);	
-
-		// Enable ADC and DMA clock
-	rcu_periph_clock_enable(RCU_USART2); // JW: was RCU_USART1
-	rcu_periph_clock_enable(RCU_DMA0); //JMA was RCU_DMA
-	
-	// Reset USART
-	usart_deinit(USART2); // JW: added
-	
-	// Init USART for 115200 baud, 8N1
-	usart_baudrate_set(USART2, iBaud);
-	usart_parity_config(USART2, USART_PM_NONE);
-	usart_word_length_set(USART2, USART_WL_8BIT);
-	usart_stop_bit_set(USART2, USART_STB_1BIT);
-	usart_hardware_flow_rts_config(USART2, USART_RTS_DISABLE);  // JW: Disable RTS
-	usart_hardware_flow_cts_config(USART2, USART_CTS_DISABLE);  // JW: Disable CTS
-	//JMA no oversampling in F103 usart_oversample_config(USART2, USART_OVSMOD_16);
-	
-	// Enable both transmitter and receiver
-	usart_transmit_config(USART2, USART_TRANSMIT_ENABLE);
-	usart_receive_config(USART2, USART_RECEIVE_ENABLE);
-	
-	// Enable USART
-	usart_enable(USART2);
-	
-	// Interrupt channel 3/4 enable
-	// usart irqs set to Pre-priority 2 can not interrupt 0=bldc/hall or 1=adc/CalculateBldc
-	//nvic_irq_enable(DMA_Channel3_4_IRQn, 2, 0);
-	//JMA F103 cannel 3 and 4 are separate. Only channel 4 is used so only channel 4 interrupt enabled
-	nvic_irq_enable(DMA0_Channel2_IRQn, 2, 0); // JW: Changed to Channel2 (from Channel4)
-
-// Initialize DMA channel 4 for USART_SLAVE RX
-	dma_deinit(DMA0, DMA_CH2); // JW: Changed to CH2 (from CH4). JMA DMA0 added
-	dma_init_struct_usart.direction = DMA_PERIPHERAL_TO_MEMORY;
-	dma_init_struct_usart.memory_addr = (uint32_t)usart2_rx_buf;
-	dma_init_struct_usart.memory_inc = DMA_MEMORY_INCREASE_ENABLE;
-	dma_init_struct_usart.memory_width = DMA_MEMORY_WIDTH_8BIT;
-	dma_init_struct_usart.number = 1;
-	dma_init_struct_usart.periph_addr = (uint32_t)&USART_DATA(USART2); // JW: USART_MASTERSLAVE_DATA_RX_ADDRESS;
-	dma_init_struct_usart.periph_inc = DMA_PERIPH_INCREASE_DISABLE;
-	dma_init_struct_usart.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
-	dma_init_struct_usart.priority = DMA_PRIORITY_ULTRA_HIGH;
-	dma_init(DMA0, DMA_CH2, &dma_init_struct_usart); // JW: Changed to CH2 (from CH4). JMA DMA0 added & added before dma_init_struct_usart
-	
-	// Configure DMA mode
-	dma_circulation_enable(DMA0, DMA_CH2); // JW: Changed to CH2 (from CH4). JMA DMA0 added
-	dma_memory_to_memory_disable(DMA0, DMA_CH2); // JW: Changed to CH2 (from CH4). JMA DMA0 added
-
-	// USART DMA enable for transmission and receive
-	usart_dma_receive_config(USART2, USART_DENR_ENABLE);
-	
-	// Enable DMA transfer complete interrupt
-	dma_interrupt_enable(DMA0, DMA_CH2, DMA_CHXCTL_FTFIE); // JW: Changed to CH2 (from CH4). JMA DMA0 added
-	
-	// At least clear number of remaining data to be transferred by the DMA 
-	dma_transfer_number_config(DMA0, DMA_CH2, 1); // JW: Changed to CH2 (from CH4). JMA DMA0 added
-	
-	// Enable dma receive channel
-	dma_channel_enable(DMA0, DMA_CH2); // JW: Changed to CH2 (from CH4). JMA DMA0 added
-#endif
-}
-
 
 
 
@@ -952,16 +659,7 @@ uint8_t flashWrite(uint32_t address, uint32_t data)	// Writes 4 bytes to micropr
 	fmc_unlock();
 	fmc_flag_clear(FMC_FLAG_END | FMC_FLAG_WPERR);
 
-	
-
-	#if TARGET == 2
-		if (fmc_halfword_program(address, (uint16_t) data)== FMC_READY) 	// JW: STM32F103 can only write 16 bits at a time.
-		{ 
-			if (fmc_halfword_program((address+2), (uint16_t) (data>>16))== FMC_READY) fflash = TRUE;
-		}
-	#else
-		if (fmc_word_program(address, data) == FMC_READY) fflash = TRUE; 
-	#endif
+	if (fmc_word_program(address, data) == FMC_READY) fflash = TRUE; 
 	fmc_lock();
 	return fflash;
 }
@@ -1047,52 +745,7 @@ void Clock_init(void)
 		dev_id = DBGMCU_IDCODE & DEV_ID_MASK;		// will be 1044 for GD32F103RC and 1040=0x410 for GD32F103C8 :-(
 		//if (dev_id == STM32F103_DEV) 	// not working 
 	#endif
-	#ifdef STM32F103
-		/* 0. SAFETY FIRST: Switch system clock back to IRC8M(HSI) if it's using the PLL */
-		/* Read the current clock source */
-		uint32_t reg = RCU_CFG0;
-		uint32_t sw = reg & 0x3;
-
-		/* If the system clock is currently sourced from the PLL... */
-		if (sw == RCU_CKSYSSRC_PLL) {
-				/* Switch it back to IRC8M(HSI) */
-				RCU_CFG0 = (reg & ~0x3) | RCU_CKSYSSRC_IRC8M; // Clear SW bits, set to IRC8M(HSI)
-				/* Wait until the switch is complete */
-				while (((RCU_CFG0 >> 2) & 0x3) != 0); // Wait for SWS to become 0 (HSI)
-		}
-
-		/* Now it's safe to disable the PLL */
-		RCU_CTL &= ~RCU_CTL_PLLEN;       // Disable PLL
-		
-		/* 1. Enable internal 8 MHz oscillator (IRC8M = HSI) */
-		RCU_CTL |= RCU_CTL_IRC8MEN;
-		while((RCU_CTL & RCU_CTL_IRC8MSTB) == 0);
-
-		/* 2. Configure Flash wait states for 64 MHz 
-			 (2 wait states needed for 48�72 MHz range) */
-		FMC_WS &= ~0x7;   // clear WSCNT[2:0]
-		FMC_WS |= 0x2;    // 2 wait states
-
-		/* 3. Configure PLL: IRC8M / 2 * 16 = 64 MHz */
-		RCU_CFG0 &= ~(RCU_CFG0_PLLMF | RCU_CFG0_PLLSEL);
-		RCU_CFG0 |= (RCU_PLLSRC_IRC8M_DIV2 | RCU_PLL_MUL16);
-
-		/* 4. Set prescalers: 
-					AHB = /1 (64 MHz), 
-					APB1 = /2 (32 MHz, must be =36 MHz), 
-					APB2 = /1 (64 MHz) */
-		RCU_CFG0 &= ~(RCU_CFG0_AHBPSC | RCU_CFG0_APB1PSC | RCU_CFG0_APB2PSC);
-		RCU_CFG0 |= (RCU_AHB_CKSYS_DIV1 | RCU_APB1_CKAHB_DIV2 | RCU_APB2_CKAHB_DIV1);
-
-		/* 5. Enable PLL */
-		RCU_CTL |= RCU_CTL_PLLEN;
-		while((RCU_CTL & RCU_CTL_PLLSTB) == 0);
-
-		/* 6. Switch system clock to PLL */
-		RCU_CFG0 &= ~RCU_CFG0_SCS;
-		RCU_CFG0 |= RCU_CKSYSSRC_PLL;
-		while((RCU_CFG0 & RCU_SCSS_PLL) == 0);
-	#endif
+	
 	SystemCoreClockUpdate();
 	pll_mul = (RCU_CFG0 & RCU_CFG0_PLLMF) >> 18;  // bits differ per header, check what value you actually get		
 }

@@ -62,7 +62,7 @@ typedef struct {
  * @param max_pwm  The maximum PWM output value (e.g., BLDC_TIMER_MID_VALUE).
  * @param max_i    The maximum absolute contribution of the integral term to the final output.
  */
-void PID_Init(PIDController *pid, float kp, float ki, float kd,
+void PID_Init1(PIDController *pid, float kp, float ki, float kd,
               int16_t min_pwm, int16_t max_pwm, float max_i, int32_t start_i) 
 {
     // Calculate and store scaled gains based on the PID equation in discrete time
@@ -103,7 +103,7 @@ uint16_t iPID_DoI = 30;
  * @param actual    The measured value (current speed in revs/s * 1024).
  * @return          The computed and clamped PWM output value as an int16_t.
  */
-int16_t PID_Update(PIDController *pid, int32_t setpoint, int32_t actual) {
+int16_t PID_Update1(PIDController *pid, int32_t setpoint, int32_t actual) {
     // Calculate current error
     error = setpoint - actual;
  //error = 0;
@@ -206,7 +206,7 @@ void DriverInit(uint8_t iDrivingModeNew) 	// Initialize controller (tune these v
 	iDrivingMode = iDrivingModeNew;
 	if (iDrivingMode==0)	return;
 	PIDInit* p = &aoPIDInit[iDrivingMode-1];
-	PID_Init(&pid, p->kp, p->ki, p->kd, -p->minmax_pwm*BLDC_TIMER_MID_VALUE, p->minmax_pwm*BLDC_TIMER_MID_VALUE, p->max_i*BLDC_TIMER_MID_VALUE, p->start_i);
+	PID_Init1(&pid, p->kp, p->ki, p->kd, -p->minmax_pwm*BLDC_TIMER_MID_VALUE, p->minmax_pwm*BLDC_TIMER_MID_VALUE, p->max_i*BLDC_TIMER_MID_VALUE, p->start_i);
 	iDriverDoEvery = p->iDoEvery;
 }
 
@@ -249,11 +249,11 @@ int16_t	Driver(uint8_t iDrivingMode, int32_t input)		// pwm/speed/torque/positio
 	case 0:	// interpret as simple pwm value
 		return input;
 	case 1:	// input will be taken as revs/s*1024 
-		return PID_Update(&pid, input, revs32);
+		return PID_Update1(&pid, input, revs32);
 	case 2:	// input will be taken as Nm*1024 
-		return PID_Update(&pid, input, torque32);
+		return PID_Update1(&pid, input, torque32);
 	case 3:	// input will be iOdom
-		return PID_Update(&pid, input, iOdom);
+		return PID_Update1(&pid, input, iOdom);
 	}
 
 	return 0;	// error, unkown drive mode

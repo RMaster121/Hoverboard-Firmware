@@ -34,6 +34,7 @@ uint8_t bRemoteTimeout = 0;			 // any Remote can set this to 1 to disable motor 
 uint8_t bPilotTimeout = 0;			 // any Pilot can set this to 1 to disable motor (with soft brake)
 uint32_t iBug = 0;
 uint8_t iBug8 = -1;
+// TODO: czy się kiedyś nie przepełni?
 uint32_t steerCounter = 0; // Steer counter for setting update rate
 int32_t speed = 0;		   // global variable for speed.    -1000 to 1000
 int32_t speedShutoff = 0;
@@ -56,10 +57,6 @@ DataSlave oDataSlave;
 #endif
 
 int32_t ShutOff(void);
-
-// =============================================================
-// Port kodu Arduino "Scanner & Register Dumper" na GD32/STM32
-// =============================================================
 
 #ifdef MASTER_OR_SINGLE
 
@@ -90,21 +87,25 @@ const float lookUpTableAngle[181] =
 
 FlagStatus enable = RESET;
 int16_t pwmSlave = 0;
+extern FlagStatus timedOut; // Timeoutvariable set by timeout timer
 
 uint32_t iTimeNextLoop = 0;
-//----------------------------------------------------------------------------
-// MAIN function
-//----------------------------------------------------------------------------
-#if defined(PLATFORMIO) && TARGET == 22 // no longer neccessary for target 2
-uint32_t SystemCoreClock = 72000000;	// Define the missing symbol
-#endif
+
+
 
 #if defined(RTT_LOG_MPU)
-#include "SEGGER_RTT.h"
+	#include "SEGGER_RTT.h"
 #endif
+#include <control/filter.h>
+#include <control/pid.h>
 
 static uint8_t plotCounter = 0;
 volatile uint32_t rttOverflowCount = 0;
+
+ComplementaryFilter myFilter;
+PID_Controller myPid;
+
+int pwm = 0;
 
 int main(void)
 {
@@ -112,7 +113,7 @@ int main(void)
 	char rttDataBuf[1024];
 	SEGGER_RTT_Init();
 	SEGGER_RTT_ConfigUpBuffer(0, "Logs", NULL, 0, SEGGER_RTT_MODE_NO_BLOCK_SKIP);
-	SEGGER_RTT_ConfigUpBuffer(1, "IMU_data", rttDataBuf, sizeof(rttDataBuf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
+	SEGGER_RTT_ConfigUpBuffer(1, "IMU_data", rttDataBuf, sizeof(rttDataBuf), SEGGER_RTT_MODE_NO_BLOCK_TRIM);
 
 	SEGGER_RTT_WriteString(0, "SEGGER RTT Initialized.\n");
 	SEGGER_RTT_WriteString(0, "TEST1234\n");
@@ -124,9 +125,6 @@ int main(void)
 	SysTick_Config(SystemCoreClock / 1000); //  Configure SysTick to generate an interrupt every millisecond
 											// Clock_test();		// 72Mhz: iTestClock=12000, 64Mhz=13500, 48Mhz=18000 = 18 seconds fron power on to startup melody. 124Mhz = 7000
 											//  PlatformIO binary: 72 Mhz=11000=11seconds, 64MHz=12380, 124Mhz=6388=6.4s . Better assembler code ?
-
-
-	
 
 #ifdef MASTER_OR_SINGLE
 	FlagStatus chargeStateLowActive = SET;
@@ -146,8 +144,8 @@ int main(void)
 	Interrupt_init();
 
 #if TARGET != 3 // did not work for gd32e230 :-/
-	// Init timeout timer
-	TimeoutTimer_init();
+				// Init timeout timer
+				// TimeoutTimer_init();
 #endif
 
 	// Init GPIOs
@@ -188,14 +186,18 @@ int main(void)
 	MPU_Init();
 #endif
 
+	// ADD SOME IF
+	Filter_Init(&myFilter, 0.9f, 0.0025f); // make dt same in both
+	PID_Init(&myPid, 5.0f, 0.0f, 0.0f, 0.0025f, 1000.0f);
+
 	// // Init ADC
-	// ADC_init();
+	ADC_init();
 
 	// // Init PWM
-	// PWM_init();
+	PWM_init();
 
-	// InitBldc(); // virtual function implemented by bldcBC.c and bldcSINE.c
-	// DriverInit(iDrivingMode);
+	InitBldc(); // virtual function implemented by bldcBC.c and bldcSINE.c
+	DriverInit(iDrivingMode);
 
 	/*
 		// added by deepseek: Apply fixed PWM pattern to lock rotor to known position
@@ -211,28 +213,6 @@ int main(void)
 	// afterwards watchdog will be fired
 	// while(1)
 	fwdgt_counter_reload();
-
-#ifdef REMOTE_AUTODETECT
-	while (1)
-	{
-		if (millis() < iTimeNextLoop)
-			continue;
-		iTimeNextLoop = millis() + DELAY_IN_MAIN_LOOP;
-
-		steerCounter++; // something like DELAY_IN_MAIN_LOOP = 5 ms
-
-		if ((steerCounter % 2) == 0) // something like DELAY_IN_MAIN_LOOP = 10 ms
-		{
-			RemoteUpdate();
-		}
-		SetEnable(1);
-
-		// Reload watchdog (watchdog fires after 1,6 seconds)
-		fwdgt_counter_reload();
-	}
-}
-
-#else
 
 	// Startup-Sound
 	BUZZER_MelodyDown()
@@ -267,226 +247,315 @@ int main(void)
 	{
 		if (millis() < iTimeNextLoop)
 			continue;
+
+		timedOut = RESET;
 		iTimeNextLoop = millis() + DELAY_IN_MAIN_LOOP;
 		steerCounter++; // something like DELAY_IN_MAIN_LOOP = 5 ms
 		DEBUG_LedSet((steerCounter % 20) < 10, 0)
 		// DEBUG_LedSet(	digitalRead(BUTTON)	,1)
 		// iBug = digitalRead(BUTTON);
 
-#ifdef MOSFET_OUT
-			digitalWrite(MOSFET_OUT, (steerCounter % 200) < 100); // onboard led blinking :-)
-#endif
-
-// MY temp
-#if defined(PILOT_DEFAULT) && defined(IMU_ENABLE) && (defined(SEND_IMU_DATA) || defined(RTT_LOG_MPU))
-		if (MPU_ReadAll() != SUCCESS)
-		{
-			I2C_Init(); // try to re-init if i2c bus fails. Need when I2C_SPEED is 400000 instead of 200000
-			MPU_Init();		// re-init mpu6050 (not really needed)
-			iBug++;
-		} else {
-			// --- LOGI (Kanał 0) ---
-			// SEGGER_RTT_WriteString(0, "[LOG] Odczyt OK\n"); // To pójdzie na terminal 0
-
-			// --- WYKRES (Kanał 1) ---
-			plotCounter++;
-			if (plotCounter >= 10) {
-				plotCounter = 0;
-				char plotStr[64];
-				int len = snprintf(plotStr, sizeof(plotStr), "%d,%d,%d,%d,%d,%d,%d\n", 
-						mpuData.accel.x, mpuData.accel.y, mpuData.accel.z, mpuData.gyro.x, mpuData.gyro.y, mpuData.gyro.z, mpuData.temperature);
-				
-
-				unsigned freeSpace = SEGGER_RTT_GetAvailWriteSpace(1);
-
-				if (freeSpace < len) 
-				{
-					// AŁA! Nie ma miejsca na ten napis.
-					rttOverflowCount++; // Zwiększ licznik błędów
-					
-					// ZAPAL CZERWONĄ DIODĘ (jeśli masz zdefiniowaną)
-					// To da Ci znać wizualnie, że łącze nie wyrabia
-					#ifdef LED_RED
-						digitalWrite(LED_RED, ((rttOverflowCount / 10) % 2)); // Migaj przy błędach
-					#endif
-					
-					// Opcjonalnie: Nie wysyłaj, żeby nie psuć strumienia uciętym tekstem
-				}
-				else
-				{
-					// Jest miejsce -> Wysyłamy bezpiecznie
-					SEGGER_RTT_WriteString(1, plotStr);
-					
-					// Zgaś diodę błędu (opcjonalnie)
-					#ifdef LED_RED
-						digitalWrite(LED_RED, 0); 
-					#endif
-				}
-			}
-		}
-
-#endif
-		// END
-
-#ifdef SLAVE
-		SetBldcInput(pwmSlave);
-#else // MASTER_OR_SINGLE
-			if ((steerCounter % 2) == 0) // something like DELAY_IN_MAIN_LOOP = 10 ms
-		{
-			// #if defined(PILOT_DEFAULT) && defined(IMU_ENABLE) && (defined(SEND_IMU_DATA) || defined(RTT_LOG_MPU))
-			// 	if (MPU_ReadAll() != SUCCESS)
-			// 	{
-			// 		I2C_Init();	// try to re-init if i2c bus fails. Need when I2C_SPEED is 400000 instead of 200000
-			// 		//MPU_Init();		// re-init mpu6050 (not really needed)
-			// 		iBug++;
-			// 	}
-
-			// #endif
-
-			RemoteUpdate();
-			// DEBUG_LedSet(RESET,0)
-		}
-		/*
-		if ((steerCounter % 1000) == 0)
-		{
-			uint8_t iAddr = i2c_scanner();
-			if (iAddr>0)	dump_i2c_registers(iAddr);
-		}
-		*/
-		if (speedShutoff)
-			speed = ShutOff();
-
-#ifdef PILOT_DEFAULT
-		if (iDrivingMode == 0)
-		{
-			// Calculate expo rate for less steering with higher speeds
-			expo = MAP((float)ABS(speed), 0, 1000, 1, 0.5);
-
-			// Each speedvalue or steervalue between 50 and -50 (STAND_STILL_THRESHOLD) means absolutely no pwm
-			// -> to get the device calm 'around zero speed'
-			scaledSpeed = speed < STAND_STILL_THRESHOLD && speed > -STAND_STILL_THRESHOLD ? 0 : CLAMP(speed, -speedLimit, speedLimit) * SPEED_COEFFICIENT;
-			scaledSteer = steer < STAND_STILL_THRESHOLD && steer > -STAND_STILL_THRESHOLD ? 0 : CLAMP(steer, -speedLimit, speedLimit) * STEER_COEFFICIENT * expo;
-
-			// Map to an angle of 180 degress to 0 degrees for array access (means angle -90 to 90 degrees)
-			steerAngle = MAP((float)scaledSteer, -1000, 1000, 180, 0);
-			xScale = lookUpTableAngle[(uint16_t)steerAngle];
-
-			// Mix steering and speed value for right and left speed
-			if (steerAngle >= 90)
-			{
-				pwmSlave = CLAMP(scaledSpeed, -1000, 1000);
-				pwmMaster = CLAMP(pwmSlave / xScale, -1000, 1000);
-			}
-			else
-			{
-				pwmMaster = CLAMP(scaledSpeed, -1000, 1000);
-				pwmSlave = CLAMP(xScale * pwmMaster, -1000, 1000);
-			}
-		}
-		else
-		{
-			// simply boost/drop speed left and right according to steer going from -1.0 to +1.0
-			pwmMaster = speed * (1 + steer / 1000.0);
-			pwmSlave = speed * (1 - steer / 1000.0);
-		}
-#else
-		Pilot(&pwmMaster, &pwmSlave);
-#endif
-
-		// Set output
-		SetBldcInput(pwmMaster);
-
-#ifdef USART_MASTERSLAVE
-		// Decide if slave will be enabled
-		if ((enable == SET && timedOut == RESET))
-			wStateSlave = wStateSlave & !STATE_Disable;
-		else
-			wStateSlave |= STATE_Disable;
-
-#ifdef MASTER
-		SendSlave(-pwmSlave);
-#endif
-
-#endif
-
-		if (batteryVoltage > BAT_LOW_LVL1) // Show green battery symbol when battery level BAT_LOW_LVL1 is reached
-		{
-			ShowBatteryState(0);
-#ifdef BEEP_BACKWARDS
-			if (beepsBackwards == SET && speed < -50)
-			{
-				BuzzerSet(5, 4) // (iFrequency, iPattern)
-			}
-			else
-#endif
-			{
-				BuzzerSet(0, 0) // (iFrequency, iPattern)
-			}
-		}
-		else if (batteryVoltage > BAT_LOW_LVL2) // Make silent sound and show orange battery symbol when battery level BAT_LOW_LVL2 is reached
-		{
-			ShowBatteryState(1);
-#ifdef BATTERY_LOW_BEEP
-			BuzzerSet(6, 3) // (iFrequency, iPattern)
-#endif
-		}
-		else if (batteryVoltage > BAT_LOW_DEAD) // Make even more sound and show red battery symbol when battery level BAT_LOW_DEAD is reached
-		{
-			ShowBatteryState(2);
-#ifdef BATTERY_LOW_BEEP
-			BuzzerSet(6, 2) // (iFrequency, iPattern)
-#endif
-		}
-		else // Shut device off, when battery is dead
-		{	 // TODO dodać jeszcze jeden tryb
-			ShowBatteryState(3);
-#ifdef BATTERY_LOW_BEEP
-			BuzzerSet(6, 1) // (iFrequency, iPattern)
-#endif
-#ifdef BATTERY_LOW_SHUTOFF
-				ShutOff();
-#endif
-		}
+		// #ifdef MOSFET_OUT
+		// 			digitalWrite(MOSFET_OUT, (steerCounter % 200) < 100); // onboard led blinking :-)
+		// #endif
 
 #ifdef BUTTON
-		// Shut device off when button is pressed
-		if (BUTTON_PUSHED == digitalRead(BUTTON))
+			// Shut device off when button is pressed
+			if (BUTTON_PUSHED != digitalRead(BUTTON)) // TODO zmienić na odwrotne
 		// if (gpio_input_bit_get(BUTTON_PORT, BUTTON_PIN))
 		{
 			while (BUTTON_PUSHED == digitalRead(BUTTON))
 			{
 				fwdgt_counter_reload();
 			}
-			// while (gpio_input_bit_get(BUTTON_PORT, BUTTON_PIN)) {fwdgt_counter_reload();}
+
 			ShutOff();
 		}
 #endif
 
-		// Calculate inactivity timeout (Except, when charger is active -> keep device running)
-		if (ABS(pwmMaster) > 50 || ABS(pwmSlave) > 50 || !chargeStateLowActive)
+#if defined(PILOT_DEFAULT) && defined(IMU_ENABLE) && (defined(SEND_IMU_DATA) || defined(RTT_LOG_MPU))
+		if (MPU_ReadAll() != SUCCESS)
 		{
-			inactivity_timeout_counter = 0;
+			I2C_Init(); // try to re-init if i2c bus fails. Need when I2C_SPEED is 400000 instead of 200000
+			MPU_Init(); // re-init mpu6050 (not really needed)
+			iBug++;
 		}
 		else
 		{
-			inactivity_timeout_counter++;
-		}
+			// --- LOGI (Kanał 0) ---
+			// SEGGER_RTT_WriteString(0, "[LOG] Odczyt OK\n"); // To pójdzie na terminal 0
 
-#ifdef INACTIVITY_TIMEOUT
-		// Shut off device after INACTIVITY_TIMEOUT in minutes
-		if (inactivity_timeout_counter > (INACTIVITY_TIMEOUT * 60 * 1000) / (DELAY_IN_MAIN_LOOP + 1))
-		{
-			ShutOff();
+			// --- WYKRES (Kanał 1) ---
+			plotCounter++;
+			if (plotCounter >= 5)
+			{
+				plotCounter = 0;
+				char plotStr[64];
+				snprintf(plotStr, sizeof(plotStr), "%d,%d,%d,%d,%d,%d,%d\n",
+						 mpuData.accel.x, mpuData.accel.y, mpuData.accel.z, mpuData.gyro.x, mpuData.gyro.y, mpuData.gyro.z, mpuData.temperature);
+				SEGGER_RTT_WriteString(1, plotStr);
+			}
 		}
 #endif
-#endif
+
+		// #ifdef SLAVE
+		// 		SetBldcInput(pwmSlave);
+		// #else // MASTER_OR_SINGLE
+		// 			if ((steerCounter % 2) == 0) // something like DELAY_IN_MAIN_LOOP = 10 ms
+		// 		{
+		// 			// #if defined(PILOT_DEFAULT) && defined(IMU_ENABLE) && (defined(SEND_IMU_DATA) || defined(RTT_LOG_MPU))
+		// 			// 	if (MPU_ReadAll() != SUCCESS)
+		// 			// 	{
+		// 			// 		I2C_Init();	// try to re-init if i2c bus fails. Need when I2C_SPEED is 400000 instead of 200000
+		// 			// 		//MPU_Init();		// re-init mpu6050 (not really needed)
+		// 			// 		iBug++;
+		// 			// 	}
+
+		// 			// #endif
+
+		// 			RemoteUpdate();
+		// 			// DEBUG_LedSet(RESET,0)
+		// 		}
+		// 		/*
+		// 		if ((steerCounter % 1000) == 0)
+		// 		{
+		// 			uint8_t iAddr = i2c_scanner();
+		// 			if (iAddr>0)	dump_i2c_registers(iAddr);
+		// 		}
+		// 		*/
+		// 		if (speedShutoff)
+		// 			speed = ShutOff(); // TODO: WHY
+
+		// #ifdef PILOT_DEFAULT
+		// 		if (iDrivingMode == 0)
+		// 		{
+		// 			// Calculate expo rate for less steering with higher speeds
+		// 			expo = MAP((float)ABS(speed), 0, 1000, 1, 0.5);
+
+		// 			// Each speedvalue or steervalue between 50 and -50 (STAND_STILL_THRESHOLD) means absolutely no pwm
+		// 			// -> to get the device calm 'around zero speed'
+		// 			scaledSpeed = speed < STAND_STILL_THRESHOLD && speed > -STAND_STILL_THRESHOLD ? 0 : CLAMP(speed, -speedLimit, speedLimit) * SPEED_COEFFICIENT;
+		// 			scaledSteer = steer < STAND_STILL_THRESHOLD && steer > -STAND_STILL_THRESHOLD ? 0 : CLAMP(steer, -speedLimit, speedLimit) * STEER_COEFFICIENT * expo;
+
+		// 			// Map to an angle of 180 degress to 0 degrees for array access (means angle -90 to 90 degrees)
+		// 			steerAngle = MAP((float)scaledSteer, -1000, 1000, 180, 0);
+		// 			xScale = lookUpTableAngle[(uint16_t)steerAngle];
+
+		// 			// Mix steering and speed value for right and left speed
+		// 			if (steerAngle >= 90)
+		// 			{
+		// 				pwmSlave = CLAMP(scaledSpeed, -1000, 1000);
+		// 				pwmMaster = CLAMP(pwmSlave / xScale, -1000, 1000);
+		// 			}
+		// 			else
+		// 			{
+		// 				pwmMaster = CLAMP(scaledSpeed, -1000, 1000);
+		// 				pwmSlave = CLAMP(xScale * pwmMaster, -1000, 1000);
+		// 			}
+		// 		}
+		// 		else
+		// 		{
+		// 			// simply boost/drop speed left and right according to steer going from -1.0 to +1.0
+		// 			pwmMaster = speed * (1 + steer / 1000.0);
+		// 			pwmSlave = speed * (1 - steer / 1000.0);
+		// 		}
+		// #else
+		// 		Pilot(&pwmMaster, &pwmSlave);
+		// #endif
+
+		// 		// Set output
+		// 		SetBldcInput(pwmMaster);
+
+		// #ifdef USART_MASTERSLAVE
+		// 		// Decide if slave will be enabled
+		// 		if ((enable == SET && timedOut == RESET))
+		// 			wStateSlave = wStateSlave & !STATE_Disable;
+		// 		else
+		// 			wStateSlave |= STATE_Disable;
+
+		// #ifdef MASTER
+		// 		SendSlave(-pwmSlave);
+		// #endif
+
+		// #endif
+
+		// 		if (batteryVoltage > BAT_LOW_LVL1) // Show green battery symbol when battery level BAT_LOW_LVL1 is reached
+		// 		{
+		// 			ShowBatteryState(0);
+		// #ifdef BEEP_BACKWARDS
+		// 			if (beepsBackwards == SET && speed < -50)
+		// 			{
+		// 				BuzzerSet(5, 4) // (iFrequency, iPattern)
+		// 			}
+		// 			else
+		// #endif
+		// 			{
+		// 				BuzzerSet(0, 0) // (iFrequency, iPattern)
+		// 			}
+		// 		}
+		// 		else if (batteryVoltage > BAT_LOW_LVL2) // Make silent sound and show orange battery symbol when battery level BAT_LOW_LVL2 is reached
+		// 		{
+		// 			ShowBatteryState(1);
+		// #ifdef BATTERY_LOW_BEEP
+		// 			BuzzerSet(6, 3) // (iFrequency, iPattern)
+		// #endif
+		// 		}
+		// 		else if (batteryVoltage > BAT_LOW_DEAD) // Make even more sound and show red battery symbol when battery level BAT_LOW_DEAD is reached
+		// 		{
+		// 			ShowBatteryState(2);
+		// #ifdef BATTERY_LOW_BEEP
+		// 			BuzzerSet(6, 2) // (iFrequency, iPattern)
+		// #endif
+		// 		}
+		// 		else // Shut device off, when battery is dead
+		// 		{	 // TODO dodać jeszcze jeden tryb
+		// 			ShowBatteryState(3);
+		// #ifdef BATTERY_LOW_BEEP
+		// 			BuzzerSet(6, 1) // (iFrequency, iPattern)
+		// #endif
+		// #ifdef BATTERY_LOW_SHUTOFF
+		// 				ShutOff();
+		// #endif
+		// 		}
+
+		// 		// Calculate inactivity timeout (Except, when charger is active -> keep device running)
+		// 		if (ABS(pwmMaster) > 50 || ABS(pwmSlave) > 50 || !chargeStateLowActive)
+		// 		{
+		// 			inactivity_timeout_counter = 0;
+		// 		}
+		// 		else
+		// 		{
+		// 			inactivity_timeout_counter++;
+		// 		}
+
+		// #ifdef INACTIVITY_TIMEOUT
+		// 		// Shut off device after INACTIVITY_TIMEOUT in minutes
+		// 		if (inactivity_timeout_counter > (INACTIVITY_TIMEOUT * 60 * 1000) / (DELAY_IN_MAIN_LOOP + 1))
+		// 		{
+		// 			ShutOff();
+		// 		}
+		// #endif
+		// #endif
 
 #if defined(CHARGE_STATE) && defined(MASTER_OR_SINGLE)
 		chargeStateLowActive = digitalRead(CHARGE_STATE);
 		enable = chargeStateLowActive;
 #else
-		enable = SET;
+			enable = SET;
 #endif
+
+		// TODO:: dodać walidację poprawnego odczytu MPU i wyciągnąć 131.0f
+		float angle = Filter_CalculateAngle(&myFilter, mpuData.accel.x, mpuData.accel.z, mpuData.gyro.y);
+		float gyroRate = (float)mpuData.gyro.x / 131.0f;
+		int32_t motorPWM = PID_Compute(&myPid, 0.0f, angle, gyroRate);
+
+		// Zmienne static (pamięć między obiegami pętli)
+		static char inputBuffer[32];
+		static int bufferIndex = 0;
+		char inputChar;
+
+		if (steerCounter % 50 == 0) {
+			char textBuffer[32]; // Bufor na tekst
+			
+			// Zamień liczbę na tekst ("%ld" dla int32_t, "%d" dla int)
+			snprintf(textBuffer, sizeof(textBuffer), "%.2f %ld", angle, motorPWM);
+			SEGGER_RTT_WriteString(0, "Angle and PWM: ");
+			SEGGER_RTT_WriteString(0, textBuffer); // Teraz podajesz bufor z tekstem
+			SEGGER_RTT_WriteString(0, "\r\n");
+			char textBuffer2[32]; // Bufor na tekst
+			
+			// Zamień liczbę na tekst ("%ld" dla int32_t, "%d" dla int)
+			snprintf(textBuffer2, sizeof(textBuffer2), "P=%.2f I=%.2f D=%.2f", myPid.Kp, myPid.Ki, myPid.Kd);
+			SEGGER_RTT_WriteString(0, "PID: ");
+			SEGGER_RTT_WriteString(0, textBuffer2); // Teraz podajesz bufor z tekstem
+			SEGGER_RTT_WriteString(0, "\r\n");
+		}
+ 
+		if (steerCounter % 20) {
+		if (SEGGER_RTT_Read(0, &inputChar, 1) > 0)
+		{
+
+			// --- 1. Obsługa ENTER (\n lub \r) ---
+			if (inputChar == '\n' || inputChar == '\r')
+			{
+				// Przejdź do nowej linii wizualnie
+				SEGGER_RTT_WriteString(0, "\r\n");
+
+				// Zamknij string i przetwórz
+				inputBuffer[bufferIndex] = 0;
+
+				if (bufferIndex > 0)
+				{
+					if (inputBuffer[0] == 'p') {
+						int val = atoi(inputBuffer + 1);
+						myPid.Kp = (float)val/100.0f;
+						PID_Reset(&myPid);
+						SEGGER_RTT_WriteString(0, "Kp OK: ");
+						SEGGER_RTT_WriteString(0, val); // Wypisz to co przyszło
+						SEGGER_RTT_WriteString(0, "\r\n");
+					} else if (inputBuffer[0] == 'i') {
+						int val = atoi(inputBuffer + 1);
+						myPid.Ki = (float)val/100.0f;
+						PID_Reset(&myPid);
+						SEGGER_RTT_WriteString(0, "Ki OK: ");
+						SEGGER_RTT_WriteString(0, (int)val); // Wypisz to co przyszło
+						SEGGER_RTT_WriteString(0, "\r\n");
+					} else if (inputBuffer[0] == 'd') {
+						int val = atoi(inputBuffer + 1);
+						myPid.Kd = (float)val/100.0f;
+						PID_Reset(&myPid);
+						SEGGER_RTT_WriteString(0, "Kd OK: ");
+						SEGGER_RTT_WriteString(0, (int)val); // Wypisz to co przyszło
+						SEGGER_RTT_WriteString(0, "\r\n");
+					} else {
+
+						SEGGER_RTT_WriteString(0, "--> Status set to: ");
+						SEGGER_RTT_WriteString(0, inputBuffer);
+						SEGGER_RTT_WriteString(0, "\r\n");
+
+						pwm = atoi(inputBuffer); // Konwersja na int
+					}
+				}
+
+				bufferIndex = 0; // Reset bufora
+			}
+
+			// --- 2. Obsługa BACKSPACE (0x08 lub 0x7F) ---
+			else if (inputChar == '\b' || inputChar == 0x7F)
+			{
+				if (bufferIndex > 0)
+				{
+					bufferIndex--; // Cofnij się w pamięci bufora
+
+					// "Magia" wizualna:
+					// 1. \b - przesuń kursor w lewo
+					// 2. " " (spacja) - zamaż literę
+					// 3. \b - przesuń kursor w lewo ponownie (żeby być w dobrym miejscu)
+					SEGGER_RTT_WriteString(0, "\b \b");
+				}
+			}
+
+			// --- 3. Normalne znaki ---
+			else
+			{
+				if (bufferIndex < (sizeof(inputBuffer) - 1))
+				{
+					// Zapisz do bufora
+					inputBuffer[bufferIndex] = inputChar;
+					bufferIndex++;
+				}
+			}
+		}
+	}
+		
+		static int minimalThreshold = 82;
+		if (motorPWM > 0) {
+			motorPWM = motorPWM + minimalThreshold;
+		} else if (motorPWM < 0) {
+			motorPWM = motorPWM - minimalThreshold;
+		}
+		
+		SetBldcInput(pwm == 1 ? motorPWM : 0);
 
 		if (bPilotTimeout || bRemoteTimeout || (wState & STATE_Disable))
 			enable = RESET;
@@ -531,11 +600,12 @@ int main(void)
 
 		// Delay(DELAY_IN_MAIN_LOOP);
 
-		#if defined(RTT_LOG_MPU)
-		     if (steerCounter % 50 == 0) {
-		         SEGGER_RTT_WriteString(0, "Tick...\n");
-		     }
-		#endif
+#if defined(RTT_LOG_MPU)
+		if (steerCounter % 1000 == 0)
+		{
+			SEGGER_RTT_WriteString(0, "Tick...\r\n");
+		}
+#endif
 
 		fwdgt_counter_reload(); // Reload watchdog until device is off
 	}
@@ -640,7 +710,5 @@ void ShowBatteryState(int8_t iLevel)
 	}
 #endif
 }
-
-#endif
 
 #endif

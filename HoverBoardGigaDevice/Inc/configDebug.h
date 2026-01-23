@@ -217,5 +217,6 @@
 // #define DEBUG_ADC
 
 #define RTT_LOG_MPU
+#define TEST_HALL2LED
 
 #endif /* CONFIG_DEBUG_H_ */

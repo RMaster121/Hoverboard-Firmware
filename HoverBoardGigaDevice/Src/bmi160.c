@@ -51,9 +51,6 @@
 #define BMI160_CHIP_ID              0xD1
 #define BMI160_CHIP_ID_ALTERNATIVE  0xD3
 
-
-extern uint32_t iBug;
-
 MPU_Data mpuData; // holds the BMI160 data, using the same shared struct
 
 int32_t aiLowPass[sizeof(mpuData)/2]; // mpuData only contains 16bit integers !
@@ -120,19 +117,19 @@ int mpu_config(void) {
     Delay(50);
 
     // 4) Configure accelerometer
-    // ODR = 200Hz (0b1000), Bandwidth = Normal (0b010 << 4) -> 0x28
-    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_ACC_CONF_ADDR, 0x2A);
+    // ODR = 200Hz (0b1001), Bandwidth = Normal
+    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_ACC_CONF_ADDR, 0x29);
     if (rc) return rc;
-    // Range = +/- 2g (0b0011)
+    // Range = +/- 4g (0b0101)
     rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_ACC_RANGE_ADDR, 0x05);
     if (rc) return rc;
 
     // 5) Configure gyroscope
-    // ODR = 200Hz (0b1000), Bandwidth = Normal (0b010 << 4) -> 0x28
-    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_GYR_CONF_ADDR, 0x2A);
+    // ODR = 200Hz (0b1001), Bandwidth = Normal
+    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_GYR_CONF_ADDR, 0x29);
     if (rc) return rc;
-    // Range = +/- 250 dps (0b0100), the closest to MPU6050's 250dps
-    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_GYR_RANGE_ADDR, 0x03);
+    // Range = +/- 500 dps
+    rc = i2c_writeByte(MPU_I2C, BMI160_I2C_ADDR, BMI160_GYR_RANGE_ADDR, 0x02);
     if (rc) return rc;
 
     return 0; // Success
@@ -140,6 +137,7 @@ int mpu_config(void) {
 
 /**
  * @brief Reads all sensor data from the BMI160.
+ * @attention This is blocking thread
  * @return SUCCESS or ERROR.
  */
 int MPU_ReadAll() {
