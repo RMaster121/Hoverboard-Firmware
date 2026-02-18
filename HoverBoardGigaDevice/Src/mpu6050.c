@@ -30,6 +30,7 @@
 
 
 extern uint32_t iBug;
+extern volatile uint32_t iBug;
 
 MPU_Data mpuData;                                       // holds the MPU-6050 data
 

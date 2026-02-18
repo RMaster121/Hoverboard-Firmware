@@ -1,20 +1,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-//#define REMOTE_AUTODETECT
-				// ONLY test with 1-2A constant current power supply !!!! The charger with 1.5A might also do :-)
-				// will drive the motor without hall input to detect the hall pins..
-
-#ifdef REMOTE_AUTODETECT
-	#define WINDOWS_RN		// adds a \r before every \n
-	
-	//#define RTT_REMOTE
-
-	#define REMOTE_USART				0 	// 	1 is usually PA2/PA3 and the original master-slave 4pin header
-																	//	0 is usually PB6/PB7 and the empty header close to the flash-header
-																	//	2 is usually PB10/PB11 on stm32f103 boards
-																	
-#else
 
 	// =======================================================================================
 	// WYBÓR MIKROKONTROLERA I UKŁADU PŁYTKI (TARGET & LAYOUT)
@@ -96,47 +82,7 @@
 
 	#if defined(MASTER) || defined(SINGLE)
 		
-		// ===================================================================================
-		// METODA STEROWANIA (REMOTE CONTROL)
-		// ===================================================================================
-		// Wybierz TYLKO JEDNO źródło sterowania.
 		
-		#define REMOTE_DUMMY		// Tryb testowy. Silnik wykonuje automatyczne ruchy (zygzak).
-			#ifdef REMOTE_DUMMY
-				#define REMOTE_PERIOD 6 	// Okres w sekundach dla automatycznego ruchu testowego.
-				#define TEST_HALL2LED		// Diagnostyka: diody LED migają w rytm sygnałów z czujników Halla silnika.
-				#define RTT_REMOTE		// Logowanie danych i sterowanie przez debugger ST-Link (Real Time Transfer).
-					#define WINDOWS_RN	// Formatowanie nowych linii dla Windows (\r\n).
-			#endif
-		//#define REMOTE_UART		// Sterowanie przez UART (np. Arduino, ESP32, Bluetooth). Prosty protokół.
-		 // send the IMU data with RemoteUart or RemoteUartBus. Tested for 2.1.20 !
-
-		//#define REMOTE_UARTBUS	// UART z adresowaniem (wiele desek na jednej magistrali).
-				#ifdef REMOTE_UARTBUS
-					#define SLAVE_ID	0	// Unikalny adres ID dla tej płytki na magistrali.
-				#endif
-		//#define REMOTE_CRSF		// Protokół CRSF (Crossfire/ELRS) dla aparatur RC. // https://github.com/RoboDurden/Hoverboard-Firmware-Hack-Gen2.x/issues/26
-		//#define REMOTE_ROS2		// Integracja z ROS2 (Robot Operating System) dla robotów autonomicznych. // https://github.com/RoboDurden/Hoverboard-Firmware-Hack-Gen2.x/issues/122
-		//#define REMOTE_ADC		// Sterowanie analogowe (potencjometry, manetka gazu, joystick).
-									// Wymaga kalibracji przy starcie (trzymaj przycisk Power).
-									// Podłączenie: Speed=PA2, Steer=PA3 (złącze Master-Slave). Zasilanie 3.3V.
-									
-		//#define REMOTE_OPTIMIZEPID	// Tryb do automatycznego dostrajania regulatora PID (zygzakowanie i analiza błędu).
-
-		//#define REMOTE_OPTIMIZEPID	// Specjalny tryb do automatycznego dostrajania parametrów regulatora PID.
-									// UŻYCIE:
-									// 1. Wybierz ten tryb (zakomentuj inne REMOTE_*).
-									// 2. Ustaw DRIVING_MODE na 1 (Speed) lub 3 (Odometer).
-									// 3. Podłącz ST-Link i uruchom RTT Viewer (np. J-Link RTT Viewer).
-									// 4. Wgraj soft. Silnik zacznie wykonywać ruchy "zygzak" (oscylacje).
-									// 5. Obserwuj logi w RTT Viewer. Algorytm będzie zmieniał kp, ki, kd szukając najmniejszego błędu.
-									// 6. Gdy wartości się ustabilizują, skopiuj je do defines.h (struktura PIDINIT_a3o).
-								// will zigzag motor and optimize pid parameters for 1=speed or 3=iOdometer.
-								// monitor with StmStudio/McuViewer or via ST-Link usb dongle RTT and openocd_rtt_32f1x.bat or PlatformIO RTT_Task
-
-				#ifdef REMOTE_OPTIMIZEPID
-					#define WINDOWS_RN		
-				#endif
 
 
 		// ===================================================================================
@@ -147,12 +93,10 @@
 		// uncoment for i2c_scanner and dump_i2c_registers to print to rtt :-)
 			// needs either I2C_PB8PB9 or I2C_PB6PB7 and MPU_6050 or MPU_6050old or BMI_160 in your defines_2-x-y.h file
 
-		//#define SEND_IMU_DATA 	// Wysyłaj dane z akcelerometru/żyroskopu przez UART (dla REMOTE_UART/UARTBUS).
 
 		//#define PILOT_USER		// Włącz własny kod sterowania z pliku PilotUser.c.
-		//#define PILOT_HOVERBIKE	// Eksperymentalne wykrywanie pedałowania (dla roweru elektrycznego).
 		
-		#define SPEED_COEFFICIENT   -1	// Skalowanie prędkości. -1 odwraca kierunek.
+		#define SPEED_COEFFICIENT   (-1)	// Skalowanie prędkości. -1 odwraca kierunek.
 		#define STEER_COEFFICIENT   1	// Skalowanie skrętu.
 
 		// ===================================================================================
@@ -180,12 +124,7 @@
 		#define MASTERSLAVE_USART		1 	// Port do komunikacji między dwiema płytkami (Master <-> Slave).
 	#endif
 	
-	#if defined(REMOTE_UART) || defined(REMOTE_UARTBUS) || defined(REMOTE_CRSF) || defined(REMOTE_ROS2)
-		#define REMOTE_USART			0 	// Port do podłączenia zewnętrznego sterowania.
-	#endif
 	
-	
-#endif
 
 #ifdef MASTER_OR_SINGLE
 	// =======================================================================================

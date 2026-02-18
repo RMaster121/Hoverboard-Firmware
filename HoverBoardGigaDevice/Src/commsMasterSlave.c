@@ -1,220 +1,130 @@
-// improved and unified serial communication by Robo Durden :-)
-#include "../Inc/defines.h"
-#include "../Inc/it.h"
-#include "../Inc/comms.h"
-#include "../Inc/commsMasterSlave.h"
-#include "../Inc/bldc.h"
-#include "../Inc/led.h"
-#include "stdio.h"
+#include "commsMasterSlave.h"
 #include "string.h"
-
-FlagStatus mosfetOutMaster = RESET;
-FlagStatus beepsBackwardsMaster = RESET;
-
-
-
-
-#ifdef MASTER_OR_SLAVE
-
-#pragma pack(1)
-
-	typedef struct {			// �#pragma pack(1)� needed to get correct sizeof()
-		uint8_t cStart;		//  = '/';
-		uint8_t	wState;
-		float currentDC; 									// global variable for current dc
-		float realSpeed; 									// global variable for real Speed
-		int32_t iOdom;	
-		uint16_t checksum;
-	} SerialSlave2Master;
-
-	typedef struct {			// �#pragma pack(1)� needed to get correct sizeof()
-		uint8_t cStart;		//  = '/';
-		int16_t	iPwmSlave;
-		uint8_t	wState;
-		uint16_t checksum;
-	} SerialMaster2Slave;
-
+#include "comms.h"
 
 
 #ifdef MASTER
-	#define SerialReceive SerialSlave2Master
-	#define SerialSend SerialMaster2Slave
-
-	// Variables which will be written by slave frame
-	extern FlagStatus beepsBackwards;
-	extern DataSlave oDataSlave;
-	extern uint8_t  wStateSlave;
-	
-	
+	PacketS2M receivedTelemetry;
 #else
-	#define SerialReceive SerialMaster2Slave
-	#define SerialSend SerialSlave2Master
-
-	extern float currentDC; 									// global variable for current dc
-	extern float realSpeed; 									// global variable for real Speed
-	extern int32_t iOdom;
-	extern uint8_t  wState;   // 1=ledGreen, 2=ledOrange, 4=ledRed, 8=ledUp, 16=ledDown   , 32=Battery3Led, 64=Disable, 128=ShutOff
-	extern int16_t pwmSlave;
-
-
-	void CheckGeneralValue(uint8_t identifier, int16_t value);
+	PacketM2S receivedCommand;
 #endif
 
-extern uint8_t usart0_rx_buf[1];
-extern uint8_t usart1_rx_buf[1];
-extern uint8_t usart2_rx_buf[1];
-//extern uint8_t usartMasterSlave_rx_buf[USART_MASTERSLAVE_RX_BUFFERSIZE];
+volatile uint8_t newDataReceived = 0;
+static uint32_t rx_read_pos = 0;
 
-//void SendBuffer(uint32_t usart_periph, uint8_t buffer[], uint8_t length);
-//uint16_t CalcCRC(uint8_t *ptr, int count);
-
-//----------------------------------------------------------------------------
-// Update USART master slave input
-//----------------------------------------------------------------------------
-
-
+// Prywatny bufor parsera do składania ramki bajt po bajcie
 static uint8_t aReceiveBuffer[sizeof(SerialReceive)];
-static int16_t iReceivePos = -1;		// if >= 0 incoming bytes are recorded until message size reached
-void ProessReceived(SerialReceive* pData);
-//int16_t swap_int16( int16_t val ) 	{	return (val << 8) | ((val >> 8) & 0xFF);	}
+static int16_t iReceivePos = -1; // -1 oznacza oczekiwanie na bajt startu
 
-// Update USART steer input
-void UpdateUSARTMasterSlaveInput(void)
+void Comms_Init(void)
 {
-	
-	uint8_t cRead = USART_MASTERSLAVE_BUFFER[0];
-	
-	if (cRead == '/')	// Start character is captured, start record
-		iReceivePos = 0;
+	rx_read_pos = 0;
+	newDataReceived = 0;
+	#ifdef MASTER
+        memset(&receivedTelemetry, 0, sizeof(receivedTelemetry));
+    #else
+        memset(&receivedCommand, 0, sizeof(receivedCommand));
+    #endif
 
-	if (iReceivePos >= 0)		// data reading has begun
-	{
-		aReceiveBuffer[iReceivePos++] = cRead;
-		if (iReceivePos == sizeof(SerialReceive))
-		{
-			iReceivePos = -1;
-			
-			SerialReceive* pData = (SerialReceive*) aReceiveBuffer;
-			if ( pData->checksum == CalcCRC(aReceiveBuffer, sizeof(SerialReceive) - 2))	// first bytes except crc
-			{
-				ProessReceived(pData);
-			}
-		}
+	USART1_Init(USART1_BAUD);
+}
+
+void ProcessReceived(const SerialReceive* pData)
+{
+	#ifdef MASTER
+		memcpy(&receivedTelemetry, pData, sizeof(receivedTelemetry));
+	#else
+		memcpy(&receivedCommand, pData, sizeof(receivedCommand));
+	#endif //TODO: może usunąć boilerplate - do funkcji
+
+    newDataReceived = 1;
+}
+
+/**
+ * @brief Przetwarza dane znajdujące się w buforze kołowym DMA.
+ * * Funkcja ta jest "konsumentem" danych, które DMA (producent) wpisało do usart1_rx_buf.
+ * Działa dopóki nie dogoni aktualnego wskaźnika zapisu sprzętowego.
+ * * @param rx_write_pos Aktualna pozycja, na której DMA skończyło pisać (head).
+ * Wartość ta jest obliczana w przerwaniu na podstawie licznika transferów DMA.
+ */
+void ProcessMasterSlaveRx(uint32_t rx_write_pos)
+{
+    // Pętla wykonuje się, dopóki nasz programowy wskaźnik odczytu (rx_read_pos)
+    // nie zrówna się z pozycją, do której dane wpisał sprzęt (rx_write_pos).
+    while (rx_read_pos != rx_write_pos)
+    {
+        // 1. Pobierz bajt z bufora kołowego DMA
+        uint8_t cRead = usart1_rx_buf[rx_read_pos];
+
+        // 2. Przesuń wskaźnik odczytu o jeden krok dalej
+        rx_read_pos++;
+        
+        // Jeśli dojdziemy do końca fizycznego rozmiaru tablicy (128), 
+        // musimy zawrócić na początek (indeks 0) - to realizuje ideę bufora kołowego.
+        if (rx_read_pos >= 128)  //TODO: do stałej
+        {
+            rx_read_pos = 0;
+        }
+
+        // --- LOGIKA PARSERA (Maszyna Stanów) ---
+
+        // KROK A: Szukanie początku ramki.
+        // Jeśli bajt to 0xAA (lub twój '/'), uznajemy, że to start nowej wiadomości.
+        if (cRead == COMM_START_BYTE) 
+        {
+            iReceivePos = 0; // Ustawiamy licznik na 0 - od teraz zbieramy bajty do aReceiveBuffer
+        }
+
+        // KROK B: Zbieranie bajtów ramki.
+        // Jeśli iReceivePos >= 0, oznacza to, że jesteśmy w trakcie odbierania poprawnej ramki.
+        if (iReceivePos >= 0)
+        {
+            // Przepisujemy bajt z bufora DMA do lokalnego bufora roboczego ramki
+            aReceiveBuffer[iReceivePos++] = cRead;
+
+            // KROK C: Sprawdzenie, czy mamy już kompletną strukturę.
+            // Porównujemy aktualną pozycję z rozmiarem struktury (np. 7 bajtów dla M2S).
+            if (iReceivePos == sizeof(SerialReceive))
+            {
+                // Mamy komplet bajtów! Natychmiast resetujemy parser (-1), 
+                // aby ewentualne śmieci po ramce nie psuły logiki.
+                iReceivePos = -1; 
+                
+                // Rzutujemy bufor bajtów na wskaźnik do naszej struktury (PacketM2S lub PacketS2M)
+                SerialReceive* pData = (SerialReceive*)aReceiveBuffer;
+                
+                // KROK D: Weryfikacja integralności (CRC).
+                // Obliczamy CRC dla wszystkich odebranych bajtów OPRÓCZ pola checksum (ostatnie 2 bajty).
+                if (pData->checksum == CalcCRC(aReceiveBuffer, sizeof(SerialReceive) - 2))
+                {
+                    // Jeśli suma kontrolna się zgadza, przekazujemy dane do logiki biznesowej
+                    // (np. ustawienie PWM silników, aktualizacja telemetrii).
+                    ProcessReceived(pData);
+                    // Błąd CRC - ramka zostaje odrzucona. System jest bezpieczny, 
+                    // bo nie zareaguje na przekłamane dane.
+                }
+            }
+        }
+    }
+}
+
+#ifdef MASTER
+	void SendToSlave(int16_t rpm, uint8_t flags) {
+    SerialSend oData;
+		oData.start = COMM_START_BYTE;
+		oData.target_rpm = rpm;
+		oData.flags = flags;
+		oData.checksum = CalcCRC((uint8_t*)&oData, sizeof(oData) - 2);
+		SendBuffer(USART_MASTERSLAVE, (uint8_t*)&oData, sizeof(oData));
 	}
-}
-
-void ProessReceived(SerialReceive* pData)
-{
-#ifdef MASTER
-	// Result variables
-	//FlagStatus upperLED = RESET;
-	//FlagStatus lowerLED = RESET;
-	//FlagStatus mosfetOut = RESET;
 #else
-	// Result variables
-	//int16_t pwmSlave = 0;
-	FlagStatus enable = RESET;
-	FlagStatus shutoff = RESET;
-	FlagStatus chargeStateLowActive = SET;
-	
-	// Auxiliary variables
-	uint8_t identifier = 0;
-	int16_t value = 0;
-#endif
-	
-	
-#ifdef MASTER
-
-	// old protocol not yet ported :-/
-	//beepsBackwards = (pData->wState & BIT(3)) ? SET : RESET;
-	//mosfetOut = (pData->wState & BIT(2)) ? SET : RESET;
-
-	oDataSlave.wState 	= pData->wState;	// = 17;
-	oDataSlave.currentDC = pData->currentDC;
-	oDataSlave.realSpeed = pData->realSpeed;
-	oDataSlave.iOdom 		= pData->iOdom;
-
-	// Set functions according to the variables
-	//digitalWrite(UPPER_LED, upperLED);
-	//digitalWrite(LOWER_LED, lowerLED);
-	//digitalWrite(MOSFET_OUT, mosfetOut);
-	//gpio_bit_write(MOSFET_OUT_PORT, MOSFET_OUT_PIN, mosfetOut);
-	//gpio_bit_write(UPPER_LED_PORT, UPPER_LED_PIN, upperLED);
-	//gpio_bit_write(LOWER_LED_PORT, LOWER_LED_PIN, lowerLED);
-
-#else
-
-	pwmSlave = CLAMP(pData->iPwmSlave,-1000,1000);
-	wState = pData->wState;
-	
-	// Send answer
-	
-	SendMaster(GetUpperLEDMaster(), GetLowerLEDMaster(), mosfetOutMaster, beepsBackwardsMaster);
-	
-	// Reset the pwm timout to avoid stopping motors
-	ResetTimeout();
-#endif
-}
-
-
-#ifdef MASTER
-
-void SendSlave(int16_t pwmSlave)
-{
-	SerialSend oData;
-	oData.cStart 	= '/';
-	oData.iPwmSlave 	= CLAMP(pwmSlave, -1000, 1000);
-	oData.wState 			= wStateSlave;	//sendByte;
-	
-	oData.checksum = 	CalcCRC((uint8_t*) &oData, sizeof(oData) - 2);	// (first bytes except crc)
-	SendBuffer(USART_MASTERSLAVE, (uint8_t*) &oData, sizeof(oData));
-	//oDataSlave.wState = 11;
-}
-
-#else	// SLAVE
-
-void SendMaster(FlagStatus upperLEDMaster, FlagStatus lowerLEDMaster, FlagStatus mosfetOutMaster, FlagStatus beepsBackwards)
-{
-	uint8_t sendByte = 0;
-	sendByte |= (0 << 7);
-	sendByte |= (0 << 6);
-	sendByte |= (0 << 5);
-	sendByte |= (0 << 4);
-	sendByte |= (beepsBackwards << 3);
-	sendByte |= (mosfetOutMaster << 2);
-	sendByte |= (lowerLEDMaster << 1);
-	sendByte |= (upperLEDMaster << 0);
-
-	SerialSend oData;
-	oData.cStart 	= '/';
-	oData.wState 			= sendByte;
-	oData.currentDC = currentDC;
-	oData.realSpeed = realSpeed;
-	oData.iOdom = iOdom;
-	
-	oData.checksum = 	CalcCRC((uint8_t*) &oData, sizeof(oData) - 2);	// (first bytes except crc)
-	SendBuffer(USART_MASTERSLAVE, (uint8_t*) &oData, sizeof(oData));
-}
-
-
-
-
-//----------------------------------------------------------------------------
-// Sets mosfetOut value which will be send to master
-//----------------------------------------------------------------------------
-void SetMosfetOutMaster(FlagStatus value)
-{
-	mosfetOutMaster = value;
-}
-
-//----------------------------------------------------------------------------
-// Returns MosfetOut value sent by master
-//----------------------------------------------------------------------------
-FlagStatus GetMosfetOutMaster(void)
-{
-	return mosfetOutMaster;
-}
-
-#endif
-
+	void SendToMaster(int16_t pitch, int16_t rpm, uint8_t err) {
+		SerialSend oData;
+		oData.start = COMM_START_BYTE;
+		oData.pitch = pitch;
+		oData.actual_rpm = rpm;
+		oData.error_code = err;
+		oData.checksum = CalcCRC((uint8_t*)&oData, sizeof(oData) - 2);
+		SendBuffer(USART_MASTERSLAVE, (uint8_t*)&oData, sizeof(oData));
+	}
 #endif

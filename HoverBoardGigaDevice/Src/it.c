@@ -34,20 +34,19 @@
 #include "../Inc/led.h"
 #include "../Inc/commsMasterSlave.h"
 
-//#include "../Inc/commsSteering.h"
 
 //#include "../Inc/commsBluetooth.h"
 
-uint32_t msTicks;
-uint32_t timeoutCounter_ms = 0;
-FlagStatus timedOut = RESET;
+volatile uint32_t msTicks; //FIXME: dodane volatile
+volatile uint32_t timeoutCounter_ms = 0;
+volatile FlagStatus timedOut = RESET;
 
 #ifdef SLAVE
 uint32_t hornCounter_ms = 0;
 #endif
 
-extern int32_t steer;
-extern int32_t speed;
+extern volatile int32_t steer;
+extern volatile int32_t speed;
 extern FlagStatus activateWeakening;
 extern FlagStatus beepsBackwards;
 
@@ -224,6 +223,19 @@ uint32_t iCounterUsart1 = 0;
 uint32_t iCounter2Usart1 = 0;
 
 #ifdef HAS_USART1
+	void USART1_IRQHandler(void)
+	{
+		if (usart_interrupt_flag_get(USART1, USART_INT_FLAG_IDLE) != RESET)
+		{
+			usart_interrupt_flag_clear(USART1, USART_INT_FLAG_IDLE);
+			uint32_t usart_dma_count = dma_transfer_number_get(DMA_CH4); //TODO: wziąć to do jakiejś jednej zmiennej
+			// TODO: to jest powiązane z setup.c linia 554 - to nam daje ilość danych do zapisania
+			uint32_t rx_write_position = 128 - usart_dma_count; // No i to nam daje adres początku danych
+			ProcessMasterSlaveRx(rx_write_position);
+		}
+	}
+
+	// TODO: remove rest
 	//----------------------------------------------------------------------------
 	// This function handles DMA_Channel3_4_IRQHandler interrupt
 	// Is asynchronously called when USART_SLAVE RX finished
@@ -231,26 +243,6 @@ uint32_t iCounter2Usart1 = 0;
 	#ifndef TARGET_DMA_Channel3_4_IRQHandler
 		#error "TARGET_DMA_Channel3_4_IRQHandler not defined for active target in target.h"
 	#endif
-	
-	void TARGET_DMA_Channel3_4_IRQHandler(void)
-	{
-		iCounterUsart1++;
-		//DEBUG_LedSet(	(steerCounter%10) < 5	,0)
-		// USART master slave RX
-		if (TARGET_dma_interrupt_flag_get(TARGET_DMA_CH4, DMA_INT_FLAG_FTF))
-		{
-			iCounter2Usart1++;
-			#if (REMOTE_USART==1) && defined(MASTER_OR_SINGLE)
-					RemoteCallback();
-			#elif (MASTERSLAVE_USART==1) && defined(MASTER_OR_SLAVE)
-					UpdateUSARTMasterSlaveInput();
-					// Update USART bluetooth input mechanism
-					//UpdateUSARTBluetoothInput();
-			#endif
-			
-			TARGET_dma_interrupt_flag_clear(TARGET_DMA_CH4, DMA_INT_FLAG_FTF);        
-		}
-	}
 #endif
 
 uint32_t iCounterUsart2 = 0;
@@ -291,7 +283,7 @@ uint32_t millis()
 }
 
 //----------------------------------------------------------------------------
-// Delays number of tick Systicks (happens every 10 ms)
+// Delays number of tick Systicks (happens every 1 ms)
 //----------------------------------------------------------------------------
 void Delay (uint32_t dlyTicks)
 {

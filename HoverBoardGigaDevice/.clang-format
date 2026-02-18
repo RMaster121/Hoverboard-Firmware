@@ -1,0 +1,4 @@
+Language: Cpp
+BasedOnStyle: Google
+IndentPPDirectives: AfterHash
+ColumnLimit: 120

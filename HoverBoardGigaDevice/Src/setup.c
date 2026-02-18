@@ -1,34 +1,4 @@
-/*
-* This file is part of the hoverboard-firmware-hack-V2 project. The 
-* firmware is used to hack the generation 2 board of the hoverboard.
-* These new hoverboards have no mainboard anymore. They consist of 
-* two Sensorboards which have their own BLDC-Bridge per Motor and an
-* ARM Cortex-M3 processor GD32F130C8.
-*
-* Copyright (C) 2018 Florian Staeblein
-* Copyright (C) 2018 Jakob Broemauer
-* Copyright (C) 2018 Kai Liebich
-* Copyright (C) 2018 Christoph Lehnert
-*
-* The program is based on the hoverboard project by Niklas Fauth. The 
-* structure was tried to be as similar as possible, so that everyone 
-* could find a better way through the code.
-*
-* This program is free software: you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-
+//FIXME: licence
 #include "../Inc/defines.h"
 #include "../Inc/it.h"
 
@@ -61,7 +31,7 @@ timer_oc_parameter_struct timerBldc_oc_parameter_struct;
 dma_parameter_struct dma_init_struct_usart;
 
 uint8_t usart0_rx_buf[1];
-uint8_t usart1_rx_buf[1];
+uint8_t usart1_rx_buf[128]; // TODO: zmienić na define gdzieś i może usunąć pozostałe?
 uint8_t usart2_rx_buf[1];
 
 
@@ -164,96 +134,6 @@ void GPIO_init(void)
 	pinModeAF(BLDC_YH, AF_TIMER0_BLDC, TIMER_BLDC_PULLUP, GPIO_OSPEED_2MHZ);
 	pinModeAF(BLDC_YL, AF_TIMER0_BLDC, TIMER_BLDC_PULLUP, GPIO_OSPEED_2MHZ);
 
-
-	
-	#ifndef REMOTE_AUTODETECT
-	
-	
-		#ifdef DEBUG_LED_PIN
-			gpio_mode_set(DEBUG_LED_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,DEBUG_LED_PIN);	
-			gpio_output_options_set(DEBUG_LED_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, DEBUG_LED_PIN);
-		#endif
-
-
-		#ifdef LED_GREEN
-			pinMode(LED_GREEN,	GPIO_MODE_OUTPUT);
-		#endif
-		#ifdef LED_RED
-			pinMode(LED_RED,		GPIO_MODE_OUTPUT);
-		#endif
-		#ifdef LED_ORANGE
-			pinMode(LED_ORANGE,	GPIO_MODE_OUTPUT);
-		#endif
-		#ifdef UPPER_LED
-			pinMode(UPPER_LED,	GPIO_MODE_OUTPUT);
-		#endif
-		#ifdef LOWER_LED
-			pinMode(LOWER_LED,	GPIO_MODE_OUTPUT);
-		#endif
-		#ifdef MOSFET_OUT
-			pinMode(MOSFET_OUT,	GPIO_MODE_OUTPUT);
-		#endif
-
-
-		#ifdef DEBUG_LED_PIN
-			gpio_mode_set(DEBUG_LED_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,DEBUG_LED_PIN);	
-			gpio_output_options_set(DEBUG_LED_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, DEBUG_LED_PIN);
-		#endif
-	
-	
-		// Init HAL input
-		pinMode(HALL_A,	GPIO_MODE_INPUT);
-		pinMode(HALL_B,	GPIO_MODE_INPUT);
-		pinMode(HALL_C,	GPIO_MODE_INPUT);
-	
-		// Init ADC pins
-		#ifdef VBATT
-			pinMode(VBATT, GPIO_MODE_ANALOG);
-		#endif
-		#ifdef CURRENT_DC
-			pinMode(CURRENT_DC, GPIO_MODE_ANALOG);
-		#endif
-		#ifdef REMOTE_ADC
-			pinMode(PA2, GPIO_MODE_ANALOG);
-			pinMode(PA3, GPIO_MODE_ANALOG);
-		#endif
-
-
-		// Init self hold
-		#ifdef SELF_HOLD
-			pinMode(SELF_HOLD,	GPIO_MODE_OUTPUT);
-		#endif
-
-		#ifdef BUZZER
-			// Init buzzer
-			pinModeSpeed(BUZZER,	GPIO_MODE_OUTPUT,GPIO_OSPEED_50MHZ);
-			//gpio_mode_set(BUZZER_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, BUZZER_PIN);	
-			//gpio_output_options_set(BUZZER_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, BUZZER_PIN);
-		#endif
-
-		#ifdef MASTER_OR_SINGLE
-		
-			// Init button
-			#ifdef BUTTON_PU
-				pinModePull(BUTTON_PU,GPIO_MODE_INPUT,GPIO_PUPD_PULLUP);
-			#elif defined(BUTTON)
-				pinMode(BUTTON,	GPIO_MODE_INPUT);
-			#endif
-			
-			#if defined(CHARGE_STATE) && defined(MASTER_OR_SINGLE)
-				pinModePull(CHARGE_STATE,GPIO_MODE_INPUT, GPIO_PUPD_PULLUP);
-			#endif
-		#endif
-		
-		#ifdef PHOTO_L
-			pinModePull(PHOTO_L,GPIO_MODE_INPUT,GPIO_PUPD_PULLUP);
-		#endif
-		#ifdef PHOTO_R
-			pinModePull(PHOTO_R,GPIO_MODE_INPUT,GPIO_PUPD_PULLUP);
-		#endif
-		
-	#endif // 	#ifndef REMOTE_AUTODETECT
-
 }
 
 void PWM_init(void)
@@ -350,6 +230,7 @@ void PWM_init(void)
 	timer_enable(TIMER_BLDC);
 }
 
+// TODO:: refactor
 void ADC_init(void)
 {
 	// Enable ADC and DMA clock
@@ -394,11 +275,6 @@ void ADC_init(void)
 	TARGET_dma_channel_enable(DMA_CH0);
 	
 	
-	#ifdef REMOTE_AUTODETECT
-		TARGET_adc_channel_length_config(ADC_REGULAR_CHANNEL, 1);
-		TARGET_adc_regular_channel_config(0, PIN_TO_CHANNEL(TODO_PIN), ADC_SAMPLETIME_13POINT5);
-			// for some reason, the adc channel 1 used for VBat (3.3V) has to be set to TODO_PIN = PF4
-	#else
 		TARGET_adc_channel_length_config(ADC_REGULAR_CHANNEL, iCountAdc);	// 2
 		#ifdef VBATT
 			TARGET_adc_regular_channel_config(0, PIN_TO_CHANNEL(VBATT), ADC_SAMPLETIME_13POINT5);
@@ -406,12 +282,7 @@ void ADC_init(void)
 		#ifdef CURRENT_DC
 			TARGET_adc_regular_channel_config(1, PIN_TO_CHANNEL(CURRENT_DC), ADC_SAMPLETIME_13POINT5);
 		#endif
-		#ifdef REMOTE_ADC
-			adc_regular_channel_config(2, PIN_TO_CHANNEL(PA2), ADC_SAMPLETIME_13POINT5);
-			adc_regular_channel_config(3, PIN_TO_CHANNEL(PA3), ADC_SAMPLETIME_13POINT5);
-		#endif
-	#endif
-	
+
 	TARGET_adc_data_alignment_config(ADC_DATAALIGN_RIGHT);
 	
 	// Set trigger of ADC
@@ -420,9 +291,6 @@ void ADC_init(void)
 
 	// Disable the temperature sensor, Vrefint and vbat channel
 	adc_tempsensor_vrefint_disable();
-	#ifndef REMOTE_AUTODETECT
-		TARGET_adc_vbat_disable();
-	#endif
 	
 	// ADC analog watchdog disable
 	TARGET_adc_watchdog_disable();
@@ -441,6 +309,7 @@ void ADC_init(void)
 }
 
 
+//TODO: usuń kiedyś
 void USART0_Init(uint32_t iBaud)
 {
 #ifdef HAS_USART0
@@ -539,26 +408,13 @@ void USART1_Init(uint32_t iBaud)
 {
 #ifdef HAS_USART1
 
-	#if TARGET == 2
-		//rcu_periph_clock_enable(RCU_AF);        // Alternate Function clock
-		//gpio_pin_remap_config(GPIO_USART0_REMAP, ENABLE); // JW: Remap USART0 to PB6 and PB7
 	
-		#if REMOTE_USART==1 && defined(REMOTE_UARTBUS)	// no pullup resistors with multiple boards on the UartBus - Esp32/Arduino (Serial.begin) have to setup pullups
-			#define USART1_PUPD	GPIO_MODE_AF_OD
-		#else
-			#define USART1_PUPD	GPIO_MODE_AF_PP
-		#endif
-		pinModeSpeed(USART1_TX, USART1_PUPD, GPIO_OSPEED_50MHZ);	// // GD32F130: GPIO_AF_1 = USART
-		pinModeSpeed(USART1_RX, GPIO_MODE_IN_FLOATING, GPIO_OSPEED_50MHZ);	
-	#else
-		#if REMOTE_USART==1 && defined(REMOTE_UARTBUS)	// no pullup resistors with multiple boards on the UartBus - Esp32/Arduino (Serial.begin) have to setup pullups
-			#define USART1_PUPD	GPIO_PUPD_NONE
-		#else
-			#define USART1_PUPD	GPIO_PUPD_PULLUP
-		#endif
-		pinModeAF(USART1_TX, AF_USART1_TX, USART1_PUPD, GPIO_OSPEED_50MHZ);	// // GD32F130: GPIO_AF_1 = USART
-		pinModeAF(USART1_RX, AF_USART1_RX, USART1_PUPD, GPIO_OSPEED_50MHZ);	
-	#endif
+		
+		#define USART1_PUPD	GPIO_PUPD_PULLUP
+		
+	pinModeAF(USART1_TX, AF_USART1_TX, USART1_PUPD, GPIO_OSPEED_50MHZ);	// GD32F130: GPIO_AF_1 = USART
+	pinModeAF(USART1_RX, AF_USART1_RX, USART1_PUPD, GPIO_OSPEED_50MHZ);	
+		//TODO: zdecydować się na jedną konwencję
 	//gpio_mode_set(USART1_TX_PORT , GPIO_MODE_AF, GPIO_PUPD_PULLUP, USART1_TX_PIN);	
 	//gpio_mode_set(USART1_RX_PORT , GPIO_MODE_AF, GPIO_PUPD_PULLUP, USART1_RX_PIN);
 	//gpio_output_options_set(USART1_TX_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, USART1_TX_PIN);
@@ -569,44 +425,36 @@ void USART1_Init(uint32_t iBaud)
 	
 	// Enable ADC and DMA clock
 	rcu_periph_clock_enable(RCU_USART1);
-	rcu_periph_clock_enable(RCU_DMA);
+	rcu_periph_clock_enable(RCU_DMA); // TODO: to nie było już inicjalizowane? Chyba może drugi raz
 	
 	// Init USART for 115200 baud, 8N1
-	usart_baudrate_set(USART1, iBaud);
+	usart_deinit(USART1); //TODO: Czy to potrzebne
+	usart_baudrate_set(USART1, iBaud); //TODO: PO co to ibaud
 	usart_parity_config(USART1, USART_PM_NONE);
 	usart_word_length_set(USART1, USART_WL_8BIT);
 	usart_stop_bit_set(USART1, USART_STB_1BIT);
-	#if TARGET == 2	// robo: 2 NOT_NEEDED
-		usart_hardware_flow_rts_config(USART1, USART_RTS_DISABLE);  // JW: Disable RTS
-		usart_hardware_flow_cts_config(USART1, USART_CTS_DISABLE);  // JW: Disable CTS
-	#else
-		TARGET_usart_oversample_config(USART1, USART_OVSMOD_16);
-	#endif
+	TARGET_usart_oversample_config(USART1, USART_OVSMOD_16);
 	
 	// Enable both transmitter and receiver
 	usart_transmit_config(USART1, USART_TRANSMIT_ENABLE);
 	usart_receive_config(USART1, USART_RECEIVE_ENABLE);
 	
-	//syscfg_dma_remap_enable(SYSCFG_DMA_REMAP_USART0RX|SYSCFG_DMA_REMAP_USART0TX);
-
 	// Enable USART
 	usart_enable(USART1);
-	
-	// Interrupt channel 3/4 enable
-	TARGET_nvic_irq_enable(TARGET_DMA_Channel3_4_IRQn, 2, 0);		// usart irqs can not interrupt 0=bldc/hall or 1=adc/CalculateBldc
-	
+		
 	// Initialize DMA channel 4 for USART_SLAVE RX
 	TARGET_dma_deinit(TARGET_DMA_CH4);
 	dma_init_struct_usart.direction = DMA_PERIPHERAL_TO_MEMORY;
 	dma_init_struct_usart.memory_addr = (uint32_t)usart1_rx_buf;
 	dma_init_struct_usart.memory_inc = DMA_MEMORY_INCREASE_ENABLE;
 	dma_init_struct_usart.memory_width = DMA_MEMORY_WIDTH_8BIT;
-	dma_init_struct_usart.number = 1;
+	dma_init_struct_usart.number = 128; //TODO: jak wyżej - zamienić na define
 	dma_init_struct_usart.periph_addr = USART1_DATA_RX_ADDRESS;
 	dma_init_struct_usart.periph_inc = DMA_PERIPH_INCREASE_DISABLE;
 	dma_init_struct_usart.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
 	dma_init_struct_usart.priority = DMA_PRIORITY_ULTRA_HIGH;
 	TARGET_dma_init(TARGET_DMA_CH4, &dma_init_struct_usart);
+	//TODO: może dodać kiedyś dma na tx?
 	
 	// Configure DMA mode
 	TARGET_dma_circulation_enable(TARGET_DMA_CH4);
@@ -616,10 +464,15 @@ void USART1_Init(uint32_t iBaud)
 	usart_dma_receive_config(USART1, USART_DENR_ENABLE);
 	
 	// Enable DMA transfer complete interrupt
-	TARGET_dma_interrupt_enable(TARGET_DMA_CH4, DMA_CHXCTL_FTFIE);
+	// TARGET_dma_interrupt_enable(TARGET_DMA_CH4, DMA_CHXCTL_FTFIE);
 	
-	// At least clear number of remaining data to be transferred by the DMA 
-	TARGET_dma_transfer_number_config(TARGET_DMA_CH4, 1);
+
+	usart_interrupt_enable(USART1, USART_INT_IDLE); //ADDED
+
+	// TARGET_nvic_irq_enable(TARGET_DMA_Channel3_4_IRQn, 2, 0);		// usart irqs can not interrupt 0=bldc/hall or 1=adc/CalculateBldc
+	TARGET_nvic_irq_enable(USART1_IRQn, 2, 0);		// usart irqs can not interrupt 0=bldc/hall or 1=adc/CalculateBldc
+
+	//TODO: jedna konwencja - TARGET_USART1 czy USART1
 	
 	// Enable dma receive channel
 	TARGET_dma_channel_enable(TARGET_DMA_CH4);
@@ -688,16 +541,13 @@ void ConfigReset(void)
 	oConfig.iVersion = EEPROM_VERSION;
 	oConfig.wState = 0;
 	int8_t i=0;
-	#ifdef REMOTE_AUTODETECT
-		for(;i<PINS_DETECT;i++)	oConfig.aiPinScan[i] = -1;	// -1 = not set
-	#else	
+	
 		oConfig.iSpeedNeutral = 2048;
 		oConfig.iSteerNeutral = 2048;
 		oConfig.iSpeedMax = 4096;
 		oConfig.iSpeedMin = 0;
 		oConfig.iSteerMax = 4096;
 		oConfig.iSteerMin = 0;
-	#endif
 	for(i=0;i<sizeof(oConfig.padding);i++)	oConfig.padding[i]=0;	// Clear padding
 }
 

@@ -6,38 +6,19 @@
 #include "../Inc/target.h"
 #include "../Inc/configSelect.h"
 
-#ifdef PILOT_HOVERBIKE
-	#include "PilotHoverbike.h"		// https://youtu.be/ihCpCtgXIRA
-#elif defined (PILOT_USER)		
-	#include "PilotUser.h"		// for your new onboard user code :-)
-#else
-	#define PILOT_DEFAULT
-#endif
+#define __uint128_t unsigned long long
+#include <stdint.h> // Teraz załączamy biblioteki systemowe
+#include <stdio.h>
 
-#include "../Inc/remote.h"
 
-#if defined(REMOTE_AUTODETECT)
-	#include "defines/defines_2-ad.h"		// https://github.com/RoboDurden/Hoverboard-Firmware-Hack-Gen2.x/issues/??
-	
-	#define SINGLE
-	#define MASTER_OR_SINGLE
-	#define DRIVING_MODE 0	//  0=pwm, 1=speed/10, 3=torque, 4=iOdometer
-	#define BAT_CELLS         	6        // battery number of cells. Normal Hoverboard battery: 10s
-	#define SPEED_COEFFICIENT   -1
-	#define STEER_COEFFICIENT   1
-	#define BLDC_BC
+	#define PILOT_DEFAULT //TODO: docelowo out
 
-	#ifndef PIN_PACKAGE
-		#define PIN_PACKAGE 48
-	#endif
 
-#else
-	#define STRINGIZE_AUX(a) #a
-	#define STRINGIZE(a) STRINGIZE_AUX(a)
-	#define INCLUE_FILE(target,version) STRINGIZE(defines/defines_2-target-version.h)
+#define STRINGIZE_AUX(a) #a
+#define STRINGIZE(a) STRINGIZE_AUX(a)
+#define INCLUE_FILE(target,version) STRINGIZE(defines/defines_2-target-version.h)
 
-	#include INCLUE_FILE(TARGET , LAYOUT)	// "defines_2-target-version.h"
-#endif
+#include INCLUE_FILE(TARGET , LAYOUT)	// "defines_2-target-version.h"
 
 #ifdef CONFIGDEBUG_H
 	#undef CHARGE_STATE	// motors will stop if charger is pluged in. disable if you use the charger to power the board
@@ -50,7 +31,7 @@
 	#include "../Src/SEGGER_RTT.h"
 	#define RTT_PRINTF(size,string,v1) {char s[size];sprintf(s,string,v1);SEGGER_RTT_WriteString(0, s);}
 	#define RTT_PRINTF2(size,string,v1,v2) {char s[size];sprintf(s,string,v1,v2);SEGGER_RTT_WriteString(0, s);}
-#else
+#else //TODO: stosować to
 	#define RTT_PRINTF(size,string,v1)
 	#define RTT_PRINTF2(size,string,v1,v2)
 #endif
@@ -114,17 +95,6 @@
   #define DEBUG_LedSet(bSet,iCol)
 #endif
 
-#ifdef REMOTE_ADC
-	#ifndef USART1_TX
-		#error "REMOTE_ADC only works with USART1 PA2/PA3"
-	#endif
-	#undef MASTERSLAVE_USART
-	#undef REMOTE_USART
-	#if defined(USART0_TX) && defined(MASTER)	// only uart left
-		#define MASTERSLAVE_USART 0
-	#endif
-#endif
-
 #if defined(MASTER) || defined(SLAVE)
 	#define MASTER_OR_SLAVE
 #endif
@@ -132,43 +102,6 @@
 
 #if defined(MASTER_OR_SLAVE) && (!defined(MASTERSLAVE_USART))
 	#error "MASTER or SLAVE set in config.h but no but no uart available. Please choose SINGLE (and REMOTE_UARTBUS)"
-#endif
-
-#if (defined(REMOTE_UART) || defined(REMOTE_UARTBUS) || defined(REMOTE_CRSF) || defined(REMOTE_ROS2)) && !defined(REMOTE_USART)
-	#error "a usart remote selected in config.h but neither USART0_REMOTE nor USART1_REMOTE in your defines_2-?.h"
-#endif
-
-#if defined(MASTERSLAVE_USART) && defined(REMOTE_USART) 
-	#if MASTERSLAVE_USART == REMOTE_USART
-		#error "MASTERSLAVE_USART must be different from REMOTE_USART"
-	#endif
-#endif
-
-
-
-#ifdef REMOTE_USART
-	#if REMOTE_USART == 0
-		#define HAS_USART0
-		#define USART0_BAUD REMOTE_BAUD		// defined in remoteUart.h or remoteCrsf.h or remoteUartBus.h
-		#define USART_REMOTE USART0
-		#define USART_REMOTE_BUFFER usart0_rx_buf		// defined in setup.c
-	#else 
-		#if REMOTE_USART == 1
-			#define HAS_USART1
-			#define USART1_BAUD REMOTE_BAUD		// defined in remoteUart.h or remoteCrsf.h or remoteUartBus.h
-			#define USART_REMOTE USART1
-			#define USART_REMOTE_BUFFER usart1_rx_buf		// defined in setup.c
-		#else 
-			#if REMOTE_USART == 2
-				#define HAS_USART2
-				#define USART2_BAUD REMOTE_BAUD		// defined in remoteUart.h or remoteCrsf.h or remoteUartBus.h
-				#define USART_REMOTE USART2
-				#define USART_REMOTE_BUFFER usart2_rx_buf		// defined in setup.c
-			#else
-				#error "no REMOTE_USART choosen (0, 1 or 2)"
-			#endif
-		#endif
-	#endif
 #endif
 
 #ifdef MASTERSLAVE_USART
@@ -271,7 +204,7 @@ typedef struct
 {
   uint16_t v_batt;
 	uint16_t current_dc;
-	#ifdef REMOTE_ADC
+	#ifdef REMOTE_ADC //TODO: co to za badziew
 		uint16_t speed;
 		uint16_t steer;
 	#endif
@@ -288,25 +221,10 @@ typedef struct
 } DataSlave;
 
 
-
-#ifdef REMOTE_AUTODETECT
-	#define PINS_DETECT 18
-		
-	#define EEPROM_VERSION 1000
-	#pragma pack(push, 1)
-	typedef struct
-	{
-		uint32_t iVersion;
-		uint16_t wState;
-		int8_t aiPinScan[PINS_DETECT];		// lists NOT the uint32_t PA7 but the index of PA7 in PinAD aoPin[COUNT_PinDigital]
-		uint8_t padding[1];  // Pad to x*4 bytes for word alignment.
-	} ConfigData;
-	#pragma pack(pop)
-#else	
 	#define EEPROM_VERSION 2
 
 	#pragma pack(push, 1)
-	typedef struct {
+	typedef struct { // TODO: na cholerę to
 			uint32_t iVersion;
 			uint16_t wState;
 			uint16_t iSpeedNeutral;		// = 2048 REMOTE_ADC
@@ -318,9 +236,9 @@ typedef struct
 			uint8_t padding[2];  // Pad to 20 bytes for word alignment. added by Deepseek
 	} ConfigData;
 	#pragma pack(pop)
-#endif
 
 
+	//TODO: Hrhrhrhrhrhrhrhr nie chce
 #if defined(MPU_6050) || defined(MPU_6050old) || defined(BMI_160)		// RemoteUart and RemoteUartBus need to access mpuData
 
 	#if (!defined(I2C_PB6PB7) && !defined(I2C_PB8PB9))

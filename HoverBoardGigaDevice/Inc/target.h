@@ -54,8 +54,8 @@
 	#define TARGET_DMA_CH4	DMA_CH4
 	#define TARGET_DMA_Channel3_4_IRQHandler	DMA_Channel3_4_IRQHandler
 
-	#define USART0_DATA_RX_ADDRESS (uint32_t)&USART_RDATA(USART0)
-	#define USART1_DATA_RX_ADDRESS (uint32_t)&USART_RDATA(USART1)
+	#define USART0_DATA_RX_ADDRESS ((uint32_t)&USART_RDATA(USART0))
+	#define USART1_DATA_RX_ADDRESS ((uint32_t)&USART_RDATA(USART1))
 	//#define USART0_DATA_RX_ADDRESS ((uint32_t)0x40013824)
 	//#define USART1_DATA_RX_ADDRESS ((uint32_t)0x40004424)
 
@@ -77,7 +77,7 @@
 	*/
 	
 	// GD32F130 has 10 channels PA0..PA7 = 0..7 and PB0,PB1 = 8,9 . Only 64 pin MCU has further adc on GPIOC
-	#define PIN_TO_CHANNEL(pin) ((pin&0xffffff00U) ==  GPIOA ? (pin&0xfU) : ((pin&0xfU)+8) )
+	#define PIN_TO_CHANNEL(pin) (((pin)&0xffffff00U) ==  GPIOA ? ((pin)&0xfU) : (((pin)&0xfU)+8) )
 
 /* function in setup.c instead of define saves memory
 	#define pinMode(pin,mode) \
@@ -93,28 +93,28 @@
 */
 	#define pinModeSpeed(pin,mode,speed) \
 	{\
-		gpio_mode_set(pin&0xffffff00U, mode, GPIO_PUPD_NONE,BIT(pin&0xfU) );	\
-		gpio_output_options_set(pin&0xffffff00U, GPIO_OTYPE_PP, speed, BIT(pin&0xfU));\
+		gpio_mode_set(((pin))&0xffffff00U, mode, GPIO_PUPD_NONE,BIT(((pin))&0xfU) );	\
+		gpio_output_options_set(((pin))&0xffffff00U, GPIO_OTYPE_PP, speed, BIT(((pin))&0xfU));\
 	}
 	
 	// AF = AlternateFunction
 	#define pinModeAF(pin, AF, pullUpDown,speed) \
 	{\
-		gpio_mode_set(pin&0xffffff00U , GPIO_MODE_AF, pullUpDown, BIT(pin&0xfU));	\
-		gpio_output_options_set(pin&0xffffff00U, GPIO_OTYPE_PP, speed, BIT(pin&0xfU));	\
-		gpio_af_set(pin&0xffffff00U, AF(pin), BIT(pin&0xfU));		\
+		gpio_mode_set(((pin))&0xffffff00U , GPIO_MODE_AF, pullUpDown, BIT(((pin))&0xfU));	\
+		gpio_output_options_set(((pin))&0xffffff00U, GPIO_OTYPE_PP, speed, BIT(((pin))&0xfU));	\
+		gpio_af_set(((pin))&0xffffff00U, AF(pin), BIT(((pin))&0xfU));		\
 	}
 	//GD32F130xx Datasheet	2.6.7. GD32F130xx pin alternate function	
 	#define AF_TIMER0_BLDC(pin)	GPIO_AF_2	// GD32F130: all TIMER0 AF are AF2
-	#define AF_TIMER0_BRKIN(pin)	(pin==PA6 ? GPIO_AF_2 : GPIO_AF_2)	// GD32F130: AF2 = PA6 or PB12
-	#define AF_USART0_TX(pin)	(pin==PB6 ? GPIO_AF_0 : GPIO_AF_1)			// GD32F130: AF0 = PB6 , AF1 = PA2 or PA9 or PA14
-	#define AF_USART0_RX(pin)	(pin==PB7 ? GPIO_AF_0 : GPIO_AF_1)			// GD32F130: AF0 = PB7 , AF1 = PA3 or PA15 
-	#define AF_USART1_TX(pin)	(pin==PA8 ? GPIO_AF_4 : GPIO_AF_1)		// GD32F130: AF4 = PA8 , AF1 = PA2 or PA14
-	#define AF_USART1_RX(pin)	(pin==PB0 ? GPIO_AF_4 : GPIO_AF_1)		// GD32F130: AF4 = PB0 , AF1 = PA3 or PA15
+	#define AF_TIMER0_BRKIN(pin)	(((pin))==PA6 ? GPIO_AF_2 : GPIO_AF_2)	// GD32F130: AF2 = PA6 or PB12
+	#define AF_USART0_TX(pin)	(((pin))==PB6 ? GPIO_AF_0 : GPIO_AF_1)			// GD32F130: AF0 = PB6 , AF1 = PA2 or PA9 or PA14
+	#define AF_USART0_RX(pin)	(((pin))==PB7 ? GPIO_AF_0 : GPIO_AF_1)			// GD32F130: AF0 = PB7 , AF1 = PA3 or PA15 
+	#define AF_USART1_TX(pin)	(((pin))==PA8 ? GPIO_AF_4 : GPIO_AF_1)		// GD32F130: AF4 = PA8 , AF1 = PA2 or PA14
+	#define AF_USART1_RX(pin)	(((pin))==PB0 ? GPIO_AF_4 : GPIO_AF_1)		// GD32F130: AF4 = PB0 , AF1 = PA3 or PA15
 	// usart1 and 1 same for GD32F230: GD32E230xxDatasheet_Rev2.0.pdf page 33ff
 
-	#define digitalWrite(pin,set) gpio_bit_write(pin&0xffffff00U,  (BIT(pin&0xfU) ), set)
-	#define digitalRead(pin) 			gpio_input_bit_get(pin&0xffffff00U, BIT(pin&0xfU))
+	#define digitalWrite(pin,set) gpio_bit_write(((pin))&0xffffff00U,  (BIT(((pin))&0xfU) ), set)
+	#define digitalRead(pin) 			gpio_input_bit_get(((pin))&0xffffff00U, BIT(((pin))&0xfU))
 
 	
 

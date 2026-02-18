@@ -41,7 +41,7 @@
 
 // return values
 #define I2C_OK    0
-#define I2C_ERR  -1
+#define I2C_ERR  (-1)
 
 // diagnostic tools
 uint8_t i2c_scanner(void);

@@ -167,13 +167,6 @@ void CalculateBLDC(void)
 		if (buzzerTimer % 100 == 0)
 			batteryVoltage = batteryVoltage * 0.999 + ((float)adc_buffer.v_batt * ADC_BATTERY_VOLT) * 0.001;
 	#endif
-
-	/* not really needed, and low pass gets overwritten by DMA anyway
-	#ifdef REMOTE_ADC
-		adc_buffer.speed = adc_buffer.speed * 0.999 + adc_buffer.speed * 0.001;		// low pass
-		adc_buffer.steer = adc_buffer.steer * 0.999 + adc_buffer.steer * 0.001;
-	#endif
-	*/
 		
 	
   	buzzerTimer++;	// also used to calculate battery voltage :-/
@@ -264,13 +257,8 @@ void CalculateBLDC(void)
 		PilotCalculate();
 	#endif
 
-	// Determine current position based on hall sensors
-	#ifdef REMOTE_AUTODETECT
-		pos = AutodetectBldc(hall_to_pos[hall],buzzerTimer);	// AUTODETECT_Stage_Hall | AUTODETECT_Stage_HallOrder
-		AutodetectScan(buzzerTimer);
-	#else
-		pos = hall_to_pos[hall];
-	#endif
+	
+	pos = hall_to_pos[hall];
 // Add this check before setting PWM:
 	if (pos == 0) 	// 0b000 and 0b111 should never happen with the three hall sensors
 	{
@@ -281,9 +269,11 @@ void CalculateBLDC(void)
 	}
 
 	extern uint16_t iDriverDoEvery;		// set in Driver:DriverInit()
-	if (buzzerTimer%iDriverDoEvery==0)	
+	if (buzzerTimer%iDriverDoEvery==0)
+	{
 		bldc_inputFilterPwm = Driver(iDrivingModeOverride,iBldcInput);		// interpret the input as pwm/speed/torque/position.
-	
+	}
+
 	// Calculate low-pass filter for pwm value
 	filter_reg = filter_reg - (filter_reg >> iFILTER_SHIFT) + bldc_inputFilterPwm;
 	bldc_outputFilterPwm = filter_reg >> iFILTER_SHIFT;
@@ -325,7 +315,10 @@ void CalculateBLDC(void)
 		speedCounterSlowLog = speedCounterSlow;		// for logging with StmStudio
 		speedCounterSlow = 0;
 	}
-	else if (speedCounterSlow >= 4000)	revs32Latest = revs32_reg = torque32 = torque32_reg = 0;
+	else if (speedCounterSlow >= 4000)
+	{	
+		revs32Latest = revs32_reg = torque32 = torque32_reg = 0;
+	}
 
 	#define RANK_revs32 4 	// Calculate low-pass filter for revs32 value
 	revs32_reg = revs32_reg - (revs32_reg >> RANK_revs32) + revs32Latest ;		// warning, (iOdom-iOdomLast) might give wrong result when iOdom overflows

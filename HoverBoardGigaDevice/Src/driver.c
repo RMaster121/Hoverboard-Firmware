@@ -210,40 +210,8 @@ void DriverInit(uint8_t iDrivingModeNew) 	// Initialize controller (tune these v
 	iDriverDoEvery = p->iDoEvery;
 }
 
-#ifdef REMOTE_OPTIMIZEPID
-	static inline uint32_t uabs32(int32_t x) {
-			int32_t mask = x >> 31;          // 0 if x >= 0, -1 if x < 0
-			return (uint32_t)((x ^ mask) - mask);
-	}
-	uint32_t iOptimizeErrors = 0;
-	uint32_t iOptimizeTotal = 0;
-	int32_t iError32Test=1;
-	uint16_t iOptimizeThreshold = 33;	// 100% error would 1024, 5% error = 51, 2% == 33
-	uint16_t bError = 0;
-	extern int32_t iRemoteMax;
-#endif
-
 int16_t	Driver(uint8_t iDrivingMode, int32_t input)		// pwm/speed/torque/position as input and returns pwm value to get a low pass filter in bldc.c
 {
-	#ifdef REMOTE_OPTIMIZEPID
-		//iError32Test = (uabs32(pid.prev_error)<<10)/uabs32(input);
-		uint16_t bErrorSet = 5000;
-		if(iDrivingMode == 3)
-		{
-			iError32Test = uabs32(pid.prev_error);		// error is absolute displacement from target iOdom
-			bErrorSet = 500;
-		}
-		else 
-			iError32Test = uabs32((pid.prev_error*1024)/input);
-		if (	iError32Test > iOptimizeThreshold)
-		{		
-			iOptimizeErrors++;		// 100% error would 1024, 5% error = 51
-			bError = iRemoteMax+10;	//bErrorSet;
-		}
-		else bError = 0;
-		iOptimizeTotal++;
-	#endif
-
 	switch (iDrivingMode)
 	{
 	case 0:	// interpret as simple pwm value
